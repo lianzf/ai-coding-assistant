@@ -42,6 +42,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       dependencies.changes.onDidChange((changes) => {
         void this.post({ type: "changes/state", changes: this.changeViews(changes) });
       }),
+      dependencies.configs.onDidChange(() => {
+        if (this.view) {
+          void this.pushState();
+        }
+      }),
+      dependencies.secrets.onDidChange(() => {
+        if (this.view) {
+          void this.pushState();
+        }
+      }),
     );
   }
 

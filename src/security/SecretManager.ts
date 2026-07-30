@@ -6,8 +6,16 @@ export interface SecretStoragePort {
 
 export class SecretManager {
   private static readonly legacyApiKeyName = "aiCodingAssistant.provider.default.apiKey";
+  private readonly listeners = new Set<() => void>();
 
   public constructor(private readonly secrets: SecretStoragePort) {}
+
+  public onDidChange(listener: () => void): { dispose(): void } {
+    this.listeners.add(listener);
+    return {
+      dispose: () => this.listeners.delete(listener),
+    };
+  }
 
   public async getApiKey(providerId = "default"): Promise<string | undefined> {
     return await this.secrets.get(this.apiKeyName(providerId));
@@ -19,10 +27,12 @@ export class SecretManager {
       throw new Error("API Key 不能为空。");
     }
     await this.secrets.store(this.apiKeyName(providerId), trimmed);
+    this.emitChange();
   }
 
   public async deleteApiKey(providerId = "default"): Promise<void> {
     await this.secrets.delete(this.apiKeyName(providerId));
+    this.emitChange();
   }
 
   public async hasApiKey(providerId = "default"): Promise<boolean> {
@@ -36,5 +46,11 @@ export class SecretManager {
     return providerId === "default"
       ? SecretManager.legacyApiKeyName
       : `aiCodingAssistant.provider.${providerId}.apiKey`;
+  }
+
+  private emitChange(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 }

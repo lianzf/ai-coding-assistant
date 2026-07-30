@@ -117,4 +117,28 @@ describe("ProviderConfigStore", () => {
       agent: "replacement",
     });
   });
+
+  it("notifies all open views when provider state changes", async () => {
+    const state = new MemoryState();
+    const store = new ProviderConfigStore(state, () => Promise.resolve(false));
+    let notifications = 0;
+    const subscription = store.onDidChange(() => {
+      notifications += 1;
+    });
+
+    await store.save(
+      {
+        displayName: "Shared",
+        baseUrl: "https://shared.example.test/v1",
+        modelId: "shared-model",
+        timeoutMs: 30_000,
+      },
+      "shared",
+    );
+    await store.assign("plan", "shared");
+    subscription.dispose();
+    await store.remove("shared");
+
+    expect(notifications).toBe(2);
+  });
 });

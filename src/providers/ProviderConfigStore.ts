@@ -12,7 +12,12 @@ export interface GlobalStatePort {
   update(key: string, value: unknown): PromiseLike<void>;
 }
 
-const providerIdSchema = z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
+const providerIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[a-zA-Z0-9_-]+$/);
 
 const storedConfigSchema = z
   .object({
@@ -50,11 +55,19 @@ export class ProviderConfigStore {
   private static readonly legacyStorageKey = "aiCodingAssistant.provider.default";
   private static readonly storageKey = "aiCodingAssistant.providers.v2";
   private static readonly assignmentsKey = "aiCodingAssistant.provider.assignments.v2";
+  private readonly listeners = new Set<() => void>();
 
   public constructor(
     private readonly state: GlobalStatePort,
     private readonly hasApiKey: (providerId: string) => Promise<boolean>,
   ) {}
+
+  public onDidChange(listener: () => void): { dispose(): void } {
+    this.listeners.add(listener);
+    return {
+      dispose: () => this.listeners.delete(listener),
+    };
+  }
 
   public async list(): Promise<readonly ProviderConfig[]> {
     return await Promise.all(
@@ -111,6 +124,7 @@ export class ProviderConfigStore {
     if (next.length === 1) {
       await this.assignAll(id);
     }
+    this.emitChange();
     return {
       ...stored,
       hasApiKey: await this.hasApiKey(id),
@@ -124,6 +138,7 @@ export class ProviderConfigStore {
     }
     const next = { ...this.getAssignments(), [mode]: id };
     await this.state.update(ProviderConfigStore.assignmentsKey, next);
+    this.emitChange();
   }
 
   public async remove(providerId: string): Promise<void> {
@@ -133,16 +148,14 @@ export class ProviderConfigStore {
     const assignments: ProviderAssignments = Object.fromEntries(
       Object.entries(this.getAssignments()).filter(([, assigned]) => assigned !== id),
     );
-    await this.state.update(ProviderConfigStore.assignmentsKey, assignments);
     const fallback = next[0];
     if (fallback) {
-      const missingModes = (["ask", "plan", "agent"] as const).filter(
-        (mode) => assignments[mode] === undefined,
-      );
-      for (const mode of missingModes) {
-        await this.assign(mode, fallback.id);
+      for (const mode of ["ask", "plan", "agent"] as const) {
+        assignments[mode] ??= fallback.id;
       }
     }
+    await this.state.update(ProviderConfigStore.assignmentsKey, assignments);
+    this.emitChange();
   }
 
   private async assignAll(providerId: string): Promise<void> {
@@ -164,5 +177,11 @@ export class ProviderConfigStore {
       this.state.get<unknown>(ProviderConfigStore.legacyStorageKey),
     );
     return legacy.success ? [legacy.data] : [];
+  }
+
+  private emitChange(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 }

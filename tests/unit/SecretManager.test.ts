@@ -62,4 +62,19 @@ describe("SecretManager", () => {
     const manager = new SecretManager(new MemorySecrets());
     await expect(manager.setApiKey("secret", "../unsafe")).rejects.toThrow("ID 无效");
   });
+
+  it("notifies open views after secret changes", async () => {
+    const manager = new SecretManager(new MemorySecrets());
+    let notifications = 0;
+    const subscription = manager.onDidChange(() => {
+      notifications += 1;
+    });
+
+    await manager.setApiKey("secret", "provider");
+    await manager.deleteApiKey("provider");
+    subscription.dispose();
+    await manager.setApiKey("new-secret", "provider");
+
+    expect(notifications).toBe(2);
+  });
 });
