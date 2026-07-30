@@ -298,7 +298,12 @@ function ChatView(): React.JSX.Element {
 
       <div className="messages" aria-live="polite">
         {messages.length === 0 && (
-          <EmptyChat applyTemplate={applyTemplate} providerReady={Boolean(activeSession)} />
+          <EmptyChat
+            applyTemplate={applyTemplate}
+            providerReady={Boolean(selectedProvider?.hasApiKey)}
+            providerTested={Boolean(selectedProvider?.lastTestedAt)}
+            workspaceTrusted={workspaceTrusted}
+          />
         )}
         {messages.map((message) => (
           <MessageCard
@@ -606,21 +611,61 @@ function SessionToolbar(): React.JSX.Element {
 function EmptyChat({
   applyTemplate,
   providerReady,
+  providerTested,
+  workspaceTrusted,
 }: {
   readonly applyTemplate: (template: string, mode: ChatMode, workspace?: boolean) => void;
   readonly providerReady: boolean;
+  readonly providerTested: boolean;
+  readonly workspaceTrusted: boolean;
 }): React.JSX.Element {
+  if (!providerReady || !providerTested || !workspaceTrusted) {
+    return (
+      <div className="empty-state onboarding">
+        <div className="empty-icon" aria-hidden="true">
+          1·2·3
+        </div>
+        <h2>完成首次使用设置</h2>
+        <p>按照下面三步连接自备模型。配置和诊断信息均保留在本机 VS Code 中。</p>
+        <ol className="onboarding-steps">
+          <li className={workspaceTrusted ? "completed" : ""}>
+            <strong>信任工作区</strong>
+            <span>{workspaceTrusted ? "已完成" : "请先确认当前项目可信"}</span>
+          </li>
+          <li className={providerReady ? "completed" : ""}>
+            <strong>配置模型与 API Key</strong>
+            <span>{providerReady ? "已安全配置" : "支持 OpenAI Compatible、内网或本地服务"}</span>
+          </li>
+          <li className={providerTested ? "completed" : ""}>
+            <strong>测试连接</strong>
+            <span>{providerTested ? "连接测试已通过" : "保存后在设置页点击“测试连接”"}</span>
+          </li>
+        </ol>
+        <button
+          type="button"
+          className="primary"
+          onClick={() =>
+            vscode.postMessage({
+              type: workspaceTrusted ? "ui/open-settings" : "ui/manage-trust",
+            })
+          }
+        >
+          {!workspaceTrusted
+            ? "管理工作区信任"
+            : providerReady
+              ? "打开设置并测试连接"
+              : "打开模型与安全设置"}
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="empty-state">
       <div className="empty-icon" aria-hidden="true">
         ✦
       </div>
       <h2>从一个真实开发任务开始</h2>
-      <p>
-        {providerReady
-          ? "选择上下文和工作模式，AI 会在修改前让你审核。"
-          : "正在初始化对话，请稍候…"}
-      </p>
+      <p>选择上下文和工作模式，AI 会在修改前让你审核。</p>
       <div className="template-grid">
         <button
           type="button"
@@ -1396,6 +1441,7 @@ function ModelsView(): React.JSX.Element {
         </div>
       </div>
       <PermissionSettings />
+      <DiagnosticsSettings />
     </section>
   );
 }
@@ -1435,8 +1481,8 @@ function ModelsForm({
           <h2>{provider ? "编辑模型" : "新增模型"}</h2>
           <p>OpenAI Compatible · 每个模型使用独立密钥</p>
         </div>
-        <span className={`connection-badge ${provider?.hasApiKey ? "ready" : ""}`}>
-          {provider?.hasApiKey ? "已配置" : "未配置"}
+        <span className={`connection-badge ${provider?.lastTestedAt ? "ready" : ""}`}>
+          {!provider?.hasApiKey ? "未配置" : provider.lastTestedAt ? "已连接" : "待测试"}
         </span>
       </div>
       <form className="settings" onSubmit={save}>
@@ -1491,7 +1537,11 @@ function ModelsForm({
         </label>
         <div className="security-note">
           <strong>密钥状态：{provider?.hasApiKey ? "已安全配置" : "未配置"}</strong>
-          <span>工作区内容会经过敏感路径过滤，文件修改始终需要审核。</span>
+          <span>
+            {provider?.lastTestedAt
+              ? `连接测试已通过：${new Date(provider.lastTestedAt).toLocaleString()}`
+              : "保存或更新配置后，请执行一次连接测试。"}
+          </span>
         </div>
         <div className="actions">
           <button type="submit" className="primary">
@@ -1634,6 +1684,24 @@ function PermissionSettings(): React.JSX.Element {
           </label>
         ))}
       </div>
+    </section>
+  );
+}
+
+function DiagnosticsSettings(): React.JSX.Element {
+  return (
+    <section className="permission-settings diagnostics-settings">
+      <div>
+        <h2>日志与诊断</h2>
+        <p>复制用于排查安装、模型状态、权限、会话和变更恢复问题的本地脱敏摘要。</p>
+      </div>
+      <div className="security-note">
+        <strong>不会包含 API Key、Base URL、工作区路径或代码内容</strong>
+        <span>复制后请先自行检查，再发送给技术支持。</span>
+      </div>
+      <button type="button" onClick={() => vscode.postMessage({ type: "diagnostics/copy" })}>
+        复制脱敏诊断信息
+      </button>
     </section>
   );
 }

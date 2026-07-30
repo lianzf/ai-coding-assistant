@@ -8,6 +8,7 @@ export interface ProviderConfig {
   readonly modelId: string;
   readonly timeoutMs: number;
   readonly hasApiKey: boolean;
+  readonly lastTestedAt?: string;
   readonly updatedAt: string;
 }
 

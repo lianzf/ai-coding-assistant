@@ -138,6 +138,26 @@ describe("Webview protocol", () => {
     ).toBe(true);
   });
 
+  it("accepts a field-free diagnostics copy request", () => {
+    expect(inboundMessageSchema.safeParse({ type: "diagnostics/copy" }).success).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "diagnostics/copy",
+        includeSecrets: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a field-free workspace trust request", () => {
+    expect(inboundMessageSchema.safeParse({ type: "ui/manage-trust" }).success).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "ui/manage-trust",
+        trusted: true,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts explicit checkpoint and batch review actions", () => {
     expect(inboundMessageSchema.safeParse({ type: "change/apply-all" }).success).toBe(true);
     expect(inboundMessageSchema.safeParse({ type: "change/reject-all" }).success).toBe(true);

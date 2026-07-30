@@ -213,6 +213,18 @@ const openSettingsSchema = z
   })
   .strict();
 
+const manageTrustSchema = z
+  .object({
+    type: z.literal("ui/manage-trust"),
+  })
+  .strict();
+
+const diagnosticsCopySchema = z
+  .object({
+    type: z.literal("diagnostics/copy"),
+  })
+  .strict();
+
 export const inboundMessageSchema = z.discriminatedUnion("type", [
   readySchema,
   providerSaveSchema,
@@ -240,6 +252,8 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   runTestsSchema,
   projectAnalyzeSchema,
   openSettingsSchema,
+  manageTrustSchema,
+  diagnosticsCopySchema,
 ]);
 
 export type InboundMessage = z.infer<typeof inboundMessageSchema>;

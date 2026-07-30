@@ -26,6 +26,7 @@ const storedConfigSchema = z
     baseUrl: z.string().url().max(2048),
     modelId: z.string().min(1).max(200),
     timeoutMs: z.number().int().min(5_000).max(600_000),
+    lastTestedAt: z.string().datetime().optional(),
     updatedAt: z.string(),
   })
   .strict();
@@ -70,12 +71,7 @@ export class ProviderConfigStore {
   }
 
   public async list(): Promise<readonly ProviderConfig[]> {
-    return await Promise.all(
-      this.storedConfigs().map(async (config) => ({
-        ...config,
-        hasApiKey: await this.hasApiKey(config.id),
-      })),
-    );
+    return await Promise.all(this.storedConfigs().map(async (config) => this.toConfig(config)));
   }
 
   public async get(providerId?: string): Promise<ProviderConfig | undefined> {
@@ -125,10 +121,57 @@ export class ProviderConfigStore {
       await this.assignAll(id);
     }
     this.emitChange();
-    return {
-      ...stored,
-      hasApiKey: await this.hasApiKey(id),
-    };
+    return await this.toConfig(stored);
+  }
+
+  public async markTested(providerId: string, testedAt = new Date().toISOString()): Promise<void> {
+    const id = providerIdSchema.parse(providerId);
+    const timestamp = z.string().datetime().parse(testedAt);
+    let found = false;
+    const next = this.storedConfigs().map((config) => {
+      if (config.id !== id) {
+        return config;
+      }
+      found = true;
+      return { ...config, lastTestedAt: timestamp };
+    });
+    if (!found) {
+      throw new Error("要标记的模型配置不存在。");
+    }
+    await this.state.update(ProviderConfigStore.storageKey, next);
+    this.emitChange();
+  }
+
+  public async markUntested(providerId: string): Promise<void> {
+    const id = providerIdSchema.parse(providerId);
+    let found = false;
+    let changed = false;
+    const next = this.storedConfigs().map((config): StoredConfig => {
+      if (config.id !== id) {
+        return config;
+      }
+      found = true;
+      if (config.lastTestedAt === undefined) {
+        return config;
+      }
+      changed = true;
+      return {
+        id: config.id,
+        displayName: config.displayName,
+        baseUrl: config.baseUrl,
+        modelId: config.modelId,
+        timeoutMs: config.timeoutMs,
+        updatedAt: config.updatedAt,
+      };
+    });
+    if (!found) {
+      throw new Error("要更新的模型配置不存在。");
+    }
+    if (!changed) {
+      return;
+    }
+    await this.state.update(ProviderConfigStore.storageKey, next);
+    this.emitChange();
   }
 
   public async assign(mode: ChatMode, providerId: string): Promise<void> {
@@ -164,6 +207,19 @@ export class ProviderConfigStore {
       plan: providerId,
       agent: providerId,
     });
+  }
+
+  private async toConfig(config: StoredConfig): Promise<ProviderConfig> {
+    return {
+      id: config.id,
+      displayName: config.displayName,
+      baseUrl: config.baseUrl,
+      modelId: config.modelId,
+      timeoutMs: config.timeoutMs,
+      hasApiKey: await this.hasApiKey(config.id),
+      ...(config.lastTestedAt !== undefined ? { lastTestedAt: config.lastTestedAt } : {}),
+      updatedAt: config.updatedAt,
+    };
   }
 
   private storedConfigs(): readonly StoredConfig[] {

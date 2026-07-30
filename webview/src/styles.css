@@ -303,6 +303,47 @@ h3 {
   color: var(--vscode-foreground);
 }
 
+.onboarding {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.onboarding .empty-icon {
+  width: 52px;
+  font-size: 0.8rem;
+}
+
+.onboarding-steps {
+  display: grid;
+  width: 100%;
+  margin: 12px 0 16px;
+  padding: 0;
+  gap: 7px;
+  list-style: none;
+  text-align: left;
+}
+
+.onboarding-steps li {
+  display: flex;
+  padding: 9px 10px;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.onboarding-steps li.completed {
+  border-color: var(--vscode-testing-iconPassed);
+}
+
+.onboarding-steps span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
 .empty-icon {
   display: grid;
   width: 42px;
@@ -1276,6 +1317,10 @@ h3 {
 .connection-badge.ready {
   color: var(--vscode-foreground);
   background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.diagnostics-settings > button {
+  justify-self: start;
 }
 
 @media (max-width: 330px) {

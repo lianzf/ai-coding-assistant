@@ -141,4 +141,26 @@ describe("ProviderConfigStore", () => {
 
     expect(notifications).toBe(2);
   });
+
+  it("persists a successful connection test and invalidates it after saving", async () => {
+    const state = new MemoryState();
+    const store = new ProviderConfigStore(state, () => Promise.resolve(true));
+    const input = {
+      displayName: "Verified",
+      baseUrl: "https://verified.example.test/v1",
+      modelId: "verified-model",
+      timeoutMs: 30_000,
+    };
+
+    await store.save(input, "verified");
+    await store.markTested("verified", "2026-07-30T08:00:00.000Z");
+    expect((await store.get("verified"))?.lastTestedAt).toBe("2026-07-30T08:00:00.000Z");
+
+    await store.markUntested("verified");
+    expect((await store.get("verified"))?.lastTestedAt).toBeUndefined();
+
+    await store.markTested("verified", "2026-07-30T08:00:00.000Z");
+    await store.save({ ...input, modelId: "verified-model-v2" }, "verified");
+    expect((await store.get("verified"))?.lastTestedAt).toBeUndefined();
+  });
 });

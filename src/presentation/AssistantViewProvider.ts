@@ -150,11 +150,17 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         return;
       case "provider/set-key":
         await this.dependencies.secrets.setApiKey(message.apiKey, message.providerId);
+        if (await this.dependencies.configs.get(message.providerId)) {
+          await this.dependencies.configs.markUntested(message.providerId);
+        }
         await this.pushState();
         await this.post({ type: "ui/info", message: "API Key 已安全保存。" });
         return;
       case "provider/clear-key":
         await this.dependencies.secrets.deleteApiKey(message.providerId);
+        if (await this.dependencies.configs.get(message.providerId)) {
+          await this.dependencies.configs.markUntested(message.providerId);
+        }
         await this.pushState();
         await this.post({ type: "ui/info", message: "API Key 已移除。" });
         return;
@@ -413,6 +419,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await vscode.commands.executeCommand("workbench.view.extension.aiCodingAssistant");
         await vscode.commands.executeCommand("aiCodingAssistant.modelsView.focus");
         return;
+      case "ui/manage-trust":
+        await vscode.commands.executeCommand("workbench.trust.manage");
+        return;
+      case "diagnostics/copy":
+        await this.copyDiagnostics();
+        return;
     }
   }
 
@@ -445,6 +457,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       apiKey,
       controller.signal,
     );
+    if (result.ok) {
+      await this.dependencies.configs.markTested(providerId);
+    }
     await this.post({ type: "provider/test-result", result });
   }
 
@@ -778,6 +793,62 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       workspaceTrusted: vscode.workspace.isTrusted,
       sessions: this.dependencies.sessions.list(),
       activeSession,
+    });
+  }
+
+  private async copyDiagnostics(): Promise<void> {
+    const providers = await this.dependencies.configs.list();
+    const sessions = this.dependencies.sessions.list();
+    const changes = this.dependencies.changes.list();
+    const projectOverview = this.dependencies.workspace.cachedProjectOverview();
+    const extension = vscode.extensions.getExtension("local-project.ai-coding-assistant");
+    const packageJson = extension?.packageJSON as { readonly version?: unknown } | undefined;
+    const changeStatusCounts = Object.fromEntries(
+      [...new Set(changes.map((change) => change.status))].map((status) => [
+        status,
+        changes.filter((change) => change.status === status).length,
+      ]),
+    );
+    const diagnostics = {
+      generatedAt: new Date().toISOString(),
+      extension: {
+        id: "local-project.ai-coding-assistant",
+        version: typeof packageJson?.version === "string" ? packageJson.version : "unknown",
+      },
+      runtime: {
+        vscodeVersion: vscode.version,
+        appName: vscode.env.appName,
+        remoteName: vscode.env.remoteName ?? "local",
+        platform: process.platform,
+        architecture: process.arch,
+        nodeVersion: process.version,
+      },
+      workspace: {
+        trusted: vscode.workspace.isTrusted,
+        folderCount: vscode.workspace.workspaceFolders?.length ?? 0,
+        projectIndex: projectOverview?.index.status ?? "not-generated",
+        projectIndexCached: projectOverview?.index.cached ?? false,
+      },
+      model: {
+        providerCount: providers.length,
+        providersWithKey: providers.filter((provider) => provider.hasApiKey).length,
+        testedProviders: providers.filter((provider) => provider.lastTestedAt !== undefined).length,
+        assignedModes: Object.keys(this.dependencies.configs.getAssignments()).sort(),
+      },
+      permissions: this.dependencies.permissions.get(),
+      sessions: {
+        total: sessions.length,
+        archived: sessions.filter((session) => session.archived).length,
+      },
+      changes: {
+        total: changes.length,
+        statusCounts: changeStatusCounts,
+      },
+    };
+    await vscode.env.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+    await this.post({
+      type: "ui/info",
+      message: "脱敏诊断信息已复制，不包含密钥、模型地址、文件路径或代码内容。",
     });
   }
 
