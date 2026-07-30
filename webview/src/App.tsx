@@ -64,6 +64,7 @@ function Workbench(): React.JSX.Element {
   const navigation = useAppStore((state) => state.navigation);
   const setNavigation = useAppStore((state) => state.setNavigation);
   const provider = useAppStore((state) => state.provider);
+  const providers = useAppStore((state) => state.providers);
   const changes = useAppStore((state) => state.changes);
   const workspaceTrusted = useAppStore((state) => state.workspaceTrusted);
   const pendingCount = changes.filter((change) => change.status === "pending").length;
@@ -89,8 +90,8 @@ function Workbench(): React.JSX.Element {
             title="打开模型设置"
             onClick={() => vscode.postMessage({ type: "ui/open-settings" })}
           >
-            <span className="model-status" data-ready={provider?.hasApiKey === true} />
-            {provider?.modelId || "配置模型"}
+            <span className="model-status" data-ready={providers.some((item) => item.hasApiKey)} />
+            {providers.length > 1 ? `${providers.length} 个模型` : provider?.modelId || "配置模型"}
           </button>
           <button
             type="button"
@@ -147,6 +148,10 @@ function ChatView(): React.JSX.Element {
   const prefill = useAppStore((state) => state.prefill);
   const consumePrefill = useAppStore((state) => state.consumePrefill);
   const workspaceTrusted = useAppStore((state) => state.workspaceTrusted);
+  const providers = useAppStore((state) => state.providers);
+  const providerAssignments = useAppStore((state) => state.providerAssignments);
+  const selectedProvider =
+    providers.find((provider) => provider.id === providerAssignments[mode]) ?? providers[0];
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -175,6 +180,7 @@ function ChatView(): React.JSX.Element {
       sessionId: activeSession.id,
       text: value,
       mode,
+      ...(selectedProvider ? { providerId: selectedProvider.id } : {}),
       includeActiveEditor,
       includeWorkspace,
     });
@@ -237,6 +243,29 @@ function ChatView(): React.JSX.Element {
         </div>
 
         <div className="context-chips">
+          <label className="model-quick-select" title="切换当前模式使用的模型">
+            <span>模型</span>
+            <select
+              value={selectedProvider?.id ?? ""}
+              onChange={(event) =>
+                vscode.postMessage({
+                  type: "provider/assign",
+                  mode,
+                  providerId: event.target.value,
+                })
+              }
+              disabled={providers.length === 0}
+              aria-label="当前模型"
+            >
+              {providers.length === 0 ? <option value="">尚未配置</option> : null}
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.displayName} · {provider.modelId}
+                  {provider.hasApiKey ? "" : "（缺少密钥）"}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className={includeActiveEditor ? "chip active" : "chip"}
@@ -293,7 +322,10 @@ function ChatView(): React.JSX.Element {
             <button
               type="submit"
               className="primary send-button"
-              disabled={!text.trim() || !workspaceTrusted || !activeSession}
+              disabled={
+                !text.trim() || !workspaceTrusted || !activeSession || !selectedProvider?.hasApiKey
+              }
+              title={selectedProvider?.hasApiKey ? "发送消息" : "请先为当前模型配置 API Key"}
             >
               发送
             </button>
@@ -890,14 +922,88 @@ function ChangeCard({ change }: { readonly change: ChangeView }): React.JSX.Elem
 }
 
 function ModelsView(): React.JSX.Element {
-  const provider = useAppStore((state) => state.provider);
-  return <ModelsForm key={provider?.updatedAt ?? "unconfigured"} provider={provider} />;
+  const providers = useAppStore((state) => state.providers);
+  const assignments = useAppStore((state) => state.providerAssignments);
+  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
+  const [selectedId, setSelectedId] = useState<string>();
+  const provider = selectedId ? providers.find((item) => item.id === selectedId) : providers[0];
+  const providerId = provider?.id ?? selectedId ?? draftId;
+
+  const createProvider = (): void => {
+    const id = crypto.randomUUID();
+    setDraftId(id);
+    setSelectedId(id);
+  };
+
+  const deleteProvider = (id: string): void => {
+    if (!window.confirm("确认删除这个模型配置及其独立 API Key？此操作无法撤销。")) {
+      return;
+    }
+    setSelectedId(providers.find((item) => item.id !== id)?.id);
+    vscode.postMessage({ type: "provider/delete", providerId: id });
+  };
+
+  return (
+    <section className="content-view settings-view">
+      <div className="section-heading">
+        <div>
+          <h1>模型与安全设置</h1>
+          <p>管理多个 OpenAI Compatible 模型，密钥分别保存到 VS Code SecretStorage</p>
+        </div>
+        <button type="button" className="primary" onClick={createProvider}>
+          ＋ 新增
+        </button>
+      </div>
+
+      <div className="model-settings-layout">
+        <nav className="provider-list" aria-label="模型配置列表">
+          {providers.length === 0 && selectedId === undefined ? <p>尚未保存模型配置</p> : null}
+          {providers.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={item.id === providerId ? "active" : ""}
+              onClick={() => setSelectedId(item.id)}
+            >
+              <span>
+                <strong>{item.displayName}</strong>
+                <small>{item.modelId}</small>
+              </span>
+              <i className="model-status" data-ready={item.hasApiKey} />
+            </button>
+          ))}
+          {!provider && selectedId ? (
+            <button type="button" className="active">
+              <span>
+                <strong>新模型</strong>
+                <small>尚未保存</small>
+              </span>
+            </button>
+          ) : null}
+        </nav>
+
+        <div className="provider-editor">
+          <ModeAssignments providers={providers} assignments={assignments} />
+          <ModelsForm
+            key={`${providerId}-${provider?.updatedAt ?? "new"}`}
+            providerId={providerId}
+            provider={provider}
+            onDelete={deleteProvider}
+          />
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function ModelsForm({
+  providerId,
   provider,
+  onDelete,
 }: {
+  readonly providerId: string;
   readonly provider: ProviderView | undefined;
+  readonly onDelete: (providerId: string) => void;
 }): React.JSX.Element {
   const [form, setForm] = useState(() => providerToForm(provider));
   const [apiKey, setApiKey] = useState("");
@@ -906,6 +1012,7 @@ function ModelsForm({
     event.preventDefault();
     vscode.postMessage({
       type: "provider/save",
+      providerId,
       displayName: form.displayName,
       baseUrl: form.baseUrl,
       modelId: form.modelId,
@@ -918,11 +1025,11 @@ function ModelsForm({
   };
 
   return (
-    <section className="content-view settings-view">
+    <>
       <div className="section-heading">
         <div>
-          <h1>模型与安全设置</h1>
-          <p>OpenAI Compatible · 密钥仅保存到 VS Code SecretStorage</p>
+          <h2>{provider ? "编辑模型" : "新增模型"}</h2>
+          <p>OpenAI Compatible · 每个模型使用独立密钥</p>
         </div>
         <span className={`connection-badge ${provider?.hasApiKey ? "ready" : ""}`}>
           {provider?.hasApiKey ? "已配置" : "未配置"}
@@ -988,7 +1095,7 @@ function ModelsForm({
           </button>
           <button
             type="button"
-            onClick={() => vscode.postMessage({ type: "provider/test" })}
+            onClick={() => vscode.postMessage({ type: "provider/test", providerId })}
             disabled={!provider?.hasApiKey}
           >
             测试连接
@@ -996,13 +1103,61 @@ function ModelsForm({
           <button
             type="button"
             className="danger"
-            onClick={() => vscode.postMessage({ type: "provider/clear-key" })}
+            onClick={() => vscode.postMessage({ type: "provider/clear-key", providerId })}
             disabled={!provider?.hasApiKey}
           >
             移除密钥
           </button>
+          {provider ? (
+            <button type="button" className="danger" onClick={() => onDelete(providerId)}>
+              删除配置
+            </button>
+          ) : null}
         </div>
       </form>
+    </>
+  );
+}
+
+function ModeAssignments({
+  providers,
+  assignments,
+}: {
+  readonly providers: readonly ProviderView[];
+  readonly assignments: Partial<Record<ChatMode, string>>;
+}): React.JSX.Element {
+  const fallback = providers[0]?.id ?? "";
+  return (
+    <section className="mode-assignments">
+      <div>
+        <h2>默认模型分配</h2>
+        <p>聊天输入区仍可随时切换，并同步更新当前模式的默认模型。</p>
+      </div>
+      <div className="assignment-grid">
+        {modes.map((mode) => (
+          <label key={mode.value}>
+            <span>{mode.label}</span>
+            <select
+              value={assignments[mode.value] ?? fallback}
+              onChange={(event) =>
+                vscode.postMessage({
+                  type: "provider/assign",
+                  mode: mode.value,
+                  providerId: event.target.value,
+                })
+              }
+              disabled={providers.length === 0}
+            >
+              {providers.length === 0 ? <option value="">尚未配置</option> : null}
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.displayName} · {provider.modelId}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
     </section>
   );
 }

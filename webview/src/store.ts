@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export type ChatMode = "ask" | "plan" | "agent";
+export type ProviderAssignments = Partial<Record<ChatMode, string>>;
 export type NavigationItem = "chat" | "project" | "changes";
 
 export interface ProviderView {
@@ -105,6 +106,8 @@ interface AppState {
   viewKind: "chat" | "models";
   navigation: NavigationItem;
   provider: ProviderView | undefined;
+  providers: readonly ProviderView[];
+  providerAssignments: ProviderAssignments;
   workspaceTrusted: boolean;
   changes: readonly ChangeView[];
   sessions: readonly SessionSummary[];
@@ -154,6 +157,8 @@ export const useAppStore = create<AppState>((set) => ({
   viewKind: initialView,
   navigation: "chat",
   provider: undefined,
+  providers: [],
+  providerAssignments: {},
   workspaceTrusted: false,
   changes: [],
   sessions: [],
@@ -183,6 +188,10 @@ export const useAppStore = create<AppState>((set) => ({
           provider: isRecord(message.provider)
             ? (message.provider as unknown as ProviderView)
             : undefined,
+          providers: Array.isArray(message.providers) ? (message.providers as ProviderView[]) : [],
+          providerAssignments: isRecord(message.providerAssignments)
+            ? message.providerAssignments
+            : {},
           changes: Array.isArray(message.changes) ? (message.changes as ChangeView[]) : [],
           sessions: Array.isArray(message.sessions) ? (message.sessions as SessionSummary[]) : [],
           activeSession,
