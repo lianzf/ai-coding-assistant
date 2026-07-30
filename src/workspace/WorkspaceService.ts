@@ -157,9 +157,7 @@ export class WorkspaceService {
       configurationFiles: configurationFiles.slice(0, 30),
       scripts,
       packageManagers: [...packageManagers].sort(),
-      warnings: truncated
-        ? [`项目文件数量达到索引上限 ${maximumFiles}，当前概览可能不完整。`]
-        : [],
+      warnings: truncated ? [`项目文件数量达到索引上限 ${maximumFiles}，当前概览可能不完整。`] : [],
       truncated,
       analyzedAt: new Date().toISOString(),
     };
@@ -375,7 +373,7 @@ export class WorkspaceService {
       "go.mod": "Go Modules",
       "cargo.lock": "Cargo",
       "pom.xml": "Maven",
-      "gradlew": "Gradle",
+      gradlew: "Gradle",
     };
     const manager = names[fileName];
     if (manager) {

@@ -1,91 +1,88 @@
 # AI Coding Assistant
 
-AI Coding Assistant 是一个本地优先的 VS Code AI 编程插件 MVP。它支持用户自备 OpenAI Compatible 模型、流式对话、工作区代码读取与搜索、代码/测试修改的原生 Diff 审核，以及审批后的测试执行。
+AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.2 版本提供三种清晰工作模式、持久化多轮会话、本地项目概览、可视化上下文、Markdown 对话、集中变更审核和受控测试执行。
+
+## 主要能力
+
+- **问答、规划、执行三模式**：只读咨询、只读方案和可审核修改边界明确。
+- **多轮会话**：按工作区保存历史对话，支持新建、切换、重命名和删除。
+- **项目概览**：本地识别语言、技术栈、模块、入口、配置、脚本和测试文件。
+- **可视化上下文**：一键附加当前文件/选区或项目结构，也可搜索并引用具体文件。
+- **安全变更**：AI 修改先进入变更中心，再查看 VS Code 原生 Diff 并明确批准。
+- **模型自备**：连接 OpenAI Compatible、本地或企业内网模型服务。
+- **国产化与离线交付**：提供通用 VSIX，不依赖 CDN 或插件原生 Node Addon。
 
 ## 安全边界
 
-- API Key 只保存到 `ExtensionContext.secrets`（VS Code SecretStorage）。
-- Webview 只收到 `hasApiKey`，插件不会把已保存的密钥传回 Webview。
+- API Key 只保存到 VS Code SecretStorage，不返回 Webview。
 - `.env`、私钥、证书和凭据路径默认禁止读取。
-- 工作区未受信任时禁止读取代码、应用修改和运行测试。
+- 工作区未受信任时禁止读取代码、分析项目、应用修改和运行测试。
 - 模型只能提出 `create`/`update` 候选修改，不能删除用户文件。
-- 修改必须先打开 VS Code Diff，并在模态确认框中批准后才可应用。
-- 应用前重新校验原始内容 SHA-256；文件已变化时拒绝覆盖。
-- 测试命令会显示完整命令、工作目录和执行方式并要求确认；Linux/银河麒麟直接以参数数组启动进程，Windows 的 `.cmd` 启动器通过仅接受固定检测参数的受限命令处理器执行。
+- 修改必须先打开 Diff，并在 Extension Host 模态确认框中批准后才可应用。
+- 应用前重新校验原始内容 SHA-256，文件变化时拒绝覆盖。
+- 测试命令显示完整命令、工作目录和执行方式并要求确认。
 
 ## 安装
 
 要求 VS Code 1.96 或更高版本。
 
 ```powershell
-code --install-extension .\artifacts\ai-coding-assistant-0.1.0.vsix
+code --install-extension .\artifacts\ai-coding-assistant-0.2.0.vsix --force
 ```
 
-离线和银河麒麟说明见 [OFFLINE-INSTALL.zh-CN.md](OFFLINE-INSTALL.zh-CN.md)。
-
-完整安装与使用说明见 [USER-GUIDE.zh-CN.md](USER-GUIDE.zh-CN.md)。
+离线和银河麒麟说明见 [OFFLINE-INSTALL.zh-CN.md](OFFLINE-INSTALL.zh-CN.md)，完整操作说明见 [USER-GUIDE.zh-CN.md](USER-GUIDE.zh-CN.md)。
 
 ## 配置模型
 
 1. 打开 Activity Bar 中的 **AI Coding Assistant**。
-2. 展开 **模型配置**。
-3. 输入 Base URL，例如 `https://gateway.example.com/v1`。
-4. 输入模型 ID 和 API Key。
-5. 点击“保存”，再点击“测试连接”。
+2. 展开默认折叠的 **设置**，或点击对话页右上角模型/齿轮按钮。
+3. 输入 OpenAI Compatible Base URL、Model ID 和 API Key。
+4. 点击“保存配置”，再点击“测试连接”。
 
 插件调用：
 
-- `GET <baseUrl>/models` 测试连接。
-- `POST <baseUrl>/chat/completions` 进行流式对话。
+```text
+GET  <baseUrl>/models
+POST <baseUrl>/chat/completions
+```
 
 服务返回非 SSE JSON 时也支持普通 Chat Completions 响应。
 
-## 对话与工作区上下文
+## 使用工作台
 
-聊天支持 Ask、Explain、Edit、Agent、Review、Test、Document 模式。
+主视图包含三个入口：
 
-- 勾选“当前文件/选区”附带活动编辑器内容。
-- `@workspace` 添加最多 200 个工作区文件路径。
-- `@file(src/example.ts)` 添加指定工作区文件。
-- `@search(keyword)` 添加工作区文本搜索结果。
+- **对话**：管理历史会话，在问答、规划、执行之间切换。
+- **项目**：本地生成项目画像，不自动把扫描结果发送到模型。
+- **变更**：集中查看修改状态、打开 Diff、批准/拒绝和运行测试。
 
-侧边栏的“工作区搜索”也可以独立查询代码。默认排除 `node_modules`、`.git`、`dist`、`build`、`out` 和 `coverage`。
+输入区可选择：
+
+- **当前文件/选区**：附加活动编辑器内容。
+- **项目结构**：附加经过敏感路径过滤的文件结构。
+- **添加上下文**：搜索代码并通过 `@file(相对路径)` 引用具体文件。
+
+仍兼容以下高级上下文语法：
+
+```text
+@workspace
+@file(src/example.ts)
+@search(keyword)
+```
+
+默认排除 `node_modules`、`.git`、`dist`、`build`、`out` 和 `coverage`。
 
 ## 代码修改与 Diff
 
-Edit、Agent、Test 模式允许模型返回：
+只有“执行”模式允许模型返回受约束的 `ai-change-set`。插件将其保存为待审核建议：
 
-````text
-```ai-change-set
-{
-  "changes": [
-    {
-      "path": "src/example.ts",
-      "operation": "update",
-      "content": "完整的新文件内容",
-      "reason": "修改原因"
-    }
-  ]
-}
-```
-````
-
-插件只把它保存为待审核建议：
-
-1. 点击“查看 Diff”。
-2. 检查 VS Code 原生 Diff。
-3. 点击“审核并应用”。
-4. 在 Extension Host 创建的模态确认框中再次批准。
+1. 打开“变更”。
+2. 点击“查看 Diff”。
+3. 检查 VS Code 原生 Diff。
+4. 点击“审核并应用”。
+5. 在模态确认框中再次批准。
 
 没有批准、路径不在工作区或原文件已变化时均禁止写入。
-
-## 生成和运行单元测试
-
-- 使用编辑器菜单或命令面板执行“为当前文件或选区生成测试”。
-- 插件以 Test 模式请求模型，并要求匹配项目现有框架。
-- 测试文件仍以 ChangeSet 形式经过 Diff 审核。
-- “运行单元测试”会探测 `pnpm/npm/yarn test`、pytest、Maven 或 CTest。
-- 运行前显示完整命令、工作目录和执行方式，用户拒绝则不会启动进程。
 
 ## 开发验证
 
@@ -99,13 +96,13 @@ pnpm test:extension
 pnpm package
 ```
 
-构建不从 CDN 加载任何 Webview 资源。VSIX 包含 Extension Host bundle、React Webview bundle、样式和图标。
+构建不会从 CDN 加载 Webview 资源。VSIX 包含 Extension Host、React Webview、Markdown 渲染、样式和图标所需的全部资源。
 
 ## 项目结构
 
 ```text
 src/
-  chat/          对话用例
+  chat/          对话用例与会话持久化
   changes/       ChangeSet 解析、审批状态和 VS Code Diff
   domain/        纯领域类型
   extension/     Composition Root
@@ -114,8 +111,8 @@ src/
   providers/     OpenAI Compatible Provider
   security/      SecretStorage 和路径策略
   testing/       测试探测和受控执行
-  workspace/     URI-first 读取、上下文和搜索
-webview/src/     React + Zustand UI
+  workspace/     项目概览、URI-first 读取、上下文和搜索
+webview/src/     React + Zustand 工作台
 tests/           单元、集成和 Extension Host 测试
 ```
 

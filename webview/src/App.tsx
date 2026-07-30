@@ -441,7 +441,9 @@ function MessageCard({
         <div>
           <span className="avatar">{message.role === "user" ? "你" : "AI"}</span>
           <strong>{message.role === "user" ? "你" : "AI 编程助手"}</strong>
-          {message.mode && <small>{modes.find((item) => item.value === message.mode)?.label}</small>}
+          {message.mode && (
+            <small>{modes.find((item) => item.value === message.mode)?.label}</small>
+          )}
         </div>
         <div className="message-actions">
           {message.role === "user" && (
@@ -512,9 +514,7 @@ function ContextPanel({
             type="button"
             key={`${result.uri}:${result.line}`}
             onClick={() =>
-              setText((value) =>
-                `${value}${value.trim() ? "\n" : ""}@file(${result.relativePath})`,
-              )
+              setText((value) => `${value}${value.trim() ? "\n" : ""}@file(${result.relativePath})`)
             }
           >
             <strong>
@@ -616,7 +616,13 @@ function ProjectView(): React.JSX.Element {
   );
 }
 
-function Metric({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element {
+function Metric({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}): React.JSX.Element {
   return (
     <div className="metric">
       <span>{label}</span>

@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type * as vscode from "vscode";
 import type { ChatMode } from "../domain/model.js";
-import type {
-  ChatSession,
-  ChatSessionSummary,
-  ConversationMessage,
-} from "../domain/session.js";
+import type { ChatSession, ChatSessionSummary, ConversationMessage } from "../domain/session.js";
 
 const storageKey = "aiCodingAssistant.chatSessions.v2";
 const maximumSessions = 50;
@@ -120,10 +116,7 @@ export class ChatSessionStore {
     return Array.isArray(stored) ? (stored as readonly ChatSession[]) : [];
   }
 
-  private async replace(
-    id: string,
-    update: (session: ChatSession) => ChatSession,
-  ): Promise<void> {
+  private async replace(id: string, update: (session: ChatSession) => ChatSession): Promise<void> {
     let found = false;
     const next = this.sessions().map((session) => {
       if (session.id !== id) {

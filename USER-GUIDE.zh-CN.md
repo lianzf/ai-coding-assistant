@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.1.x`。
+本文档适用于 AI Coding Assistant `0.2.x`。
 
 插件标识：
 
@@ -49,9 +49,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.1.0.vsix
-ai-coding-assistant-0.1.0.vsix.sha256
-ai-coding-assistant-0.1.0.metadata.json
+ai-coding-assistant-0.2.0.vsix
+ai-coding-assistant-0.2.0.vsix.sha256
+ai-coding-assistant-0.2.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -59,15 +59,15 @@ ai-coding-assistant-0.1.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.1.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.1.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.2.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.2.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.1.0.vsix
-cat ai-coding-assistant-0.1.0.vsix.sha256
+sha256sum ai-coding-assistant-0.2.0.vsix
+cat ai-coding-assistant-0.2.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -80,13 +80,13 @@ cat ai-coding-assistant-0.1.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.1.0.vsix`。
+5. 选择 `ai-coding-assistant-0.2.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.1.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.2.0.vsix --force
 ```
 
 检查安装结果：
@@ -99,13 +99,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.1.0
+local-project.ai-coding-assistant@0.2.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.1.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.2.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -128,16 +128,15 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 code --uninstall-extension local-project.ai-coding-assistant
 ```
 
-如果需要同时清理已保存的 API Key，请先在“模型配置”中点击“移除密钥”，再卸载插件。
+如果需要同时清理已保存的 API Key，请先在“设置”中点击“移除密钥”，再卸载插件。
 
 ## 5. 首次启动
 
 1. 打开需要处理的项目文件夹。
 2. 如果 VS Code 显示工作区信任提示，请确认该项目可信后再授予信任。
 3. 点击 Activity Bar 中的 **AI Coding Assistant** 图标。
-4. 展开以下两个视图：
-   - **AI 编程**；
-   - **模型配置**。
+4. 使用 **AI 编程**主视图中的“对话、项目、变更”三个入口。
+5. 模型配置位于默认折叠的 **设置**视图，也可以点击主视图右上角的模型名称或齿轮。
 
 也可以按 `Ctrl+Shift+P` 打开命令面板，然后运行：
 
@@ -205,30 +204,35 @@ Model ID：deepseek-v4-pro
 
 ## 7. 使用 AI 对话
 
-### 7.1 中文模式说明
+### 7.1 三种工作模式
 
-| 下拉选项 | 适用场景                          |
-| -------- | --------------------------------- |
-| 问答     | 一般编程问题、方案咨询            |
-| 解释     | 解释当前代码、错误或实现逻辑      |
-| 编辑     | 生成代码修改建议                  |
-| 智能体   | 处理需要分析和分步骤修改的任务    |
-| 审查     | 审查代码质量、缺陷和风险          |
-| 测试     | 生成单元测试和测试用例            |
-| 文档     | 生成 README、注释、接口说明等文档 |
+| 模式 | 适用场景                               | 文件修改               |
+| ---- | -------------------------------------- | ---------------------- |
+| 问答 | 编程问题、代码解释和一般咨询           | 禁止                   |
+| 规划 | 分析项目、代码审查、制定方案和评估风险 | 禁止                   |
+| 执行 | 按任务生成代码、测试或文档修改         | 只生成待审核 ChangeSet |
 
-模式名称为中文，但发送给 Extension Host 的内部协议值保持稳定，不影响模型调用。
+“解释代码、分析项目、代码审查、生成单元测试”等常用操作会显示为新对话快捷模板。
 
 ### 7.2 发送消息
 
-1. 在模式下拉框中选择需要的模式。
-2. 根据需要勾选“当前文件/选区”。
+1. 在输入框上方选择“问答、规划、执行”。
+2. 根据需要启用“当前文件/选区”或“项目结构”上下文标签。
 3. 输入问题或任务。
-4. 点击“发送”。
+4. 按 `Enter` 或点击“发送”；`Shift+Enter` 用于换行。
 
-模型响应会以流式方式逐步显示。生成过程中可以点击“停止”取消当前请求。
+模型响应会以流式 Markdown 逐步显示。代码块、表格和列表会格式化显示；消息支持复制和再次使用。生成过程中可以点击“停止生成”取消当前请求。
 
-### 7.3 当前文件与选区
+### 7.3 会话管理
+
+对话顶部可以：
+
+- 新建对话；
+- 切换当前工作区的历史对话；
+- 重命名或删除对话；
+- 在重新加载 VS Code 后恢复多轮上下文。
+
+### 7.4 当前文件与选区
 
 勾选“当前文件/选区”后：
 
@@ -238,7 +242,13 @@ Model ID：deepseek-v4-pro
 
 ## 8. 添加工作区上下文
 
-可以在消息中使用以下语法。
+优先使用输入区的可视化上下文标签：
+
+- “当前文件/选区”附加活动编辑器内容；
+- “项目结构”附加经过安全过滤的文件结构；
+- “添加上下文”搜索代码并引用具体文件。
+
+高级用户仍可以在消息中使用以下兼容语法。
 
 ### 8.1 获取工作区文件结构
 
@@ -280,13 +290,14 @@ Model ID：deepseek-v4-pro
 请根据 @search(createOrder) 找出订单创建流程。
 ```
 
-### 8.4 独立工作区搜索
+### 8.4 可视化工作区搜索
 
-“AI 编程”视图中的“工作区搜索”可以直接搜索代码：
+点击输入区的“添加上下文”后可以直接搜索代码：
 
 1. 输入至少两个字符；
 2. 点击“搜索”；
-3. 查看文件路径、行号和命中内容。
+3. 查看文件路径、行号和命中内容；
+4. 点击结果，把对应文件引用加入当前任务。
 
 默认排除：
 
@@ -298,11 +309,23 @@ Model ID：deepseek-v4-pro
 - `coverage`
 - 虚拟环境和常见构建目录
 
+### 8.5 项目概览
+
+打开“项目”入口并点击“分析项目”，插件会在本地扫描受信任工作区，生成：
+
+- 文件和测试文件数量；
+- 主要语言、技术栈和包管理器；
+- 顶层模块、常见入口和配置文件；
+- `package.json` 中可用的项目脚本；
+- 索引是否达到文件数量上限。
+
+项目概览不会自动发送给远程模型，敏感路径仍会被安全策略过滤。
+
 ## 9. 生成与审核代码修改
 
 ### 9.1 生成修改
 
-使用“编辑”“智能体”或“测试”模式描述修改目标。模型可以返回受约束的 ChangeSet，操作类型只允许：
+使用“执行”模式描述修改目标。模型可以返回受约束的 ChangeSet，操作类型只允许：
 
 - `create`
 - `update`
@@ -311,7 +334,7 @@ Model ID：deepseek-v4-pro
 
 ### 9.2 查看 Diff
 
-模型返回有效修改后，“待审核修改”区域会显示文件路径、操作类型和原因。
+模型返回有效修改后，“变更”入口会显示文件路径、操作类型、状态和原因。
 
 点击“查看 Diff”，插件会打开 VS Code 原生 Diff：
 
@@ -339,7 +362,7 @@ Model ID：deepseek-v4-pro
 1. 打开需要测试的文件，或者选中部分代码。
 2. 右键编辑器。
 3. 选择 `AI Coding Assistant：为当前文件或选区生成测试`。
-4. 插件会切换到“测试”模式并填充任务说明。
+4. 插件会切换到“执行”模式并填充任务说明。
 5. 发送任务。
 6. 使用 Diff 审核生成的测试文件。
 7. 明确批准后再应用。
@@ -387,7 +410,7 @@ AI Coding Assistant：运行单元测试
 | 命令                                          | 用途                      |
 | --------------------------------------------- | ------------------------- |
 | AI Coding Assistant：打开对话                 | 打开聊天视图              |
-| AI Coding Assistant：配置模型                 | 打开模型配置视图          |
+| AI Coding Assistant：配置模型                 | 打开设置视图              |
 | AI Coding Assistant：为当前文件或选区生成测试 | 生成测试任务              |
 | AI Coding Assistant：运行单元测试             | 检测并运行测试            |
 | AI Coding Assistant：预览待审核修改           | 打开最近待审核修改的 Diff |
@@ -402,6 +425,7 @@ AI Coding Assistant：运行单元测试
 | `aiCodingAssistant.includeActiveEditor`  |  `true` | 默认附带当前文件或选区     |
 | `aiCodingAssistant.maxContextCharacters` | `24000` | 单次请求的上下文字符上限   |
 | `aiCodingAssistant.maxSearchFiles`       |   `200` | 工作区搜索最多检查的文件数 |
+| `aiCodingAssistant.maxIndexFiles`        |  `4000` | 项目概览最多索引的文件数   |
 
 ## 14. 安全策略
 
@@ -446,7 +470,7 @@ AI Coding Assistant：运行单元测试
 
 ### 15.1 提示“请先保存 OpenAI Compatible 配置”
 
-打开“模型配置”，填写配置名称、Base URL、Model ID 和超时，点击“保存”。
+打开“设置”，填写配置名称、Base URL、Model ID 和超时，点击“保存配置”。
 
 ### 15.2 API Key 已保存，但状态显示未配置
 
