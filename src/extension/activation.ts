@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ChatService } from "../chat/ChatService.js";
+import { ChatSessionStore } from "../chat/ChatSessionStore.js";
 import { ChangeManager } from "../changes/ChangeManager.js";
 import { VsCodeChangeGateway } from "../changes/VsCodeChangeGateway.js";
 import { AssistantViewProvider } from "../presentation/AssistantViewProvider.js";
@@ -15,6 +16,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
   const configs = new ProviderConfigStore(context.globalState, () => secrets.hasApiKey());
   const provider = new OpenAICompatibleProvider();
   const workspace = new WorkspaceService();
+  const sessions = new ChatSessionStore(context.workspaceState);
   const changeGateway = new VsCodeChangeGateway(workspace);
   const changes = new ChangeManager(changeGateway);
   const tests = new TestRunner();
@@ -22,6 +24,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
   const shared = {
     extensionUri: context.extensionUri,
     chat,
+    sessions,
     configs,
     secrets,
     provider,

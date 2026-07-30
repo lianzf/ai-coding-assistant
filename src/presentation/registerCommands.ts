@@ -27,7 +27,7 @@ export function registerCommands(
     vscode.commands.registerCommand("aiCodingAssistant.generateTests", async () => {
       await dependencies.chatView.prefill(
         "请为当前选区或当前文件生成单元测试。先识别项目已有测试框架和风格，然后给出测试计划和可审核的测试文件修改。",
-        "test",
+        "agent",
       );
       await focus("aiCodingAssistant.chatView");
     }),

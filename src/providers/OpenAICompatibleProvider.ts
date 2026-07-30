@@ -79,7 +79,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       if (!response.ok) {
         return {
           ok: false,
-          message: `连接失败：HTTP ${response.status}`,
+          message: await this.httpError(response),
           latencyMs: Date.now() - started,
         };
       }
@@ -124,8 +124,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         signal: abort.signal,
       });
       if (!response.ok) {
-        const body = (await response.text()).slice(0, 1000);
-        throw new Error(`HTTP ${response.status}: ${body}`);
+        throw new Error(await this.httpError(response));
       }
 
       const contentType = response.headers.get("content-type") ?? "";
@@ -274,6 +273,78 @@ export class OpenAICompatibleProvider implements ModelProvider {
 
   private headers(apiKey: string): Record<string, string> {
     return apiKey.length > 0 ? { Authorization: `Bearer ${apiKey}` } : {};
+  }
+
+  private async httpError(response: Response): Promise<string> {
+    const body = (await response.text()).slice(0, 4_000);
+    const detail = this.errorDetail(body);
+    const guidance = this.statusGuidance(response.status);
+    return [
+      `模型服务请求失败（HTTP ${response.status}）。`,
+      guidance,
+      detail ? `服务信息：${detail}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  private errorDetail(body: string): string {
+    if (!body.trim()) {
+      return "";
+    }
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (this.isRecord(parsed)) {
+        const error = parsed.error;
+        if (typeof error === "string") {
+          return error.slice(0, 500);
+        }
+        if (this.isRecord(error) && typeof error.message === "string") {
+          return error.message.slice(0, 500);
+        }
+        if (typeof parsed.message === "string") {
+          return parsed.message.slice(0, 500);
+        }
+      }
+      if (Array.isArray(parsed)) {
+        const values = parsed as unknown[];
+        const first: unknown = values[0];
+        if (this.isRecord(first) && typeof first.message === "string") {
+          return first.message.slice(0, 500);
+        }
+      }
+    } catch {
+      // Fall back to a short plain-text detail below.
+    }
+    return body.replace(/\s+/g, " ").trim().slice(0, 500);
+  }
+
+  private statusGuidance(status: number): string {
+    switch (status) {
+      case 400:
+      case 422:
+        return "请求参数与当前模型接口不兼容，请检查 Model ID、Base URL 和模型能力。";
+      case 401:
+        return "API Key 无效或已过期，请在“设置”中重新配置密钥。";
+      case 402:
+        return "模型账户余额或额度不足，请充值、增加额度或切换其他模型。";
+      case 403:
+        return "当前 API Key 没有访问该模型的权限。";
+      case 404:
+        return "未找到接口或模型，请确认 Base URL 通常以 /v1 结尾，并检查 Model ID。";
+      case 408:
+        return "模型服务处理超时，请稍后重试或提高请求超时时间。";
+      case 429:
+        return "请求频率或额度达到限制，请稍后重试。";
+      default:
+        return status >= 500
+          ? "模型服务暂时不可用，请稍后重试或联系服务提供方。"
+          : "请检查模型配置和服务端日志。";
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private createAbort(

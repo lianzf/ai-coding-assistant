@@ -1,8 +1,8 @@
 {
   "name": "ai-coding-assistant",
   "displayName": "AI Coding Assistant",
-  "description": "A local-first VS Code AI coding assistant with reviewable changes.",
-  "version": "0.1.0",
+  "description": "面向项目理解、任务规划和安全变更审核的本地优先 VS Code AI 编程助手。",
+  "version": "0.2.0",
   "publisher": "local-project",
   "license": "MIT",
   "private": true,
@@ -62,8 +62,9 @@
         },
         {
           "id": "aiCodingAssistant.modelsView",
-          "name": "模型配置",
-          "type": "webview"
+          "name": "设置",
+          "type": "webview",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -123,6 +124,13 @@
           "minimum": 10,
           "maximum": 2000,
           "description": "工作区文本搜索最多检查的文件数。"
+        },
+        "aiCodingAssistant.maxIndexFiles": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 100,
+          "maximum": 20000,
+          "description": "生成项目概览时最多索引的文件数。"
         }
       }
     }

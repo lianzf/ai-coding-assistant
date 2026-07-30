@@ -4,6 +4,7 @@ import type { ChatMode } from "../domain/model.js";
 import type { FileChange } from "../domain/change.js";
 import { inboundMessageSchema, type InboundMessage } from "../protocol/messages.js";
 import type { ChatService } from "../chat/ChatService.js";
+import type { ChatSessionStore } from "../chat/ChatSessionStore.js";
 import type { ChangeManager } from "../changes/ChangeManager.js";
 import type { OpenAICompatibleProvider } from "../providers/OpenAICompatibleProvider.js";
 import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
@@ -17,6 +18,7 @@ export type ViewKind = "chat" | "models";
 export interface AssistantViewDependencies {
   readonly extensionUri: vscode.Uri;
   readonly chat: ChatService;
+  readonly sessions: ChatSessionStore;
   readonly configs: ProviderConfigStore;
   readonly secrets: SecretManager;
   readonly provider: OpenAICompatibleProvider;
@@ -28,6 +30,7 @@ export interface AssistantViewDependencies {
 export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
   private pendingPrefill: { readonly text: string; readonly mode: ChatMode } | undefined;
+  private activeSessionId: string | undefined;
   private readonly requests = new Map<string, AbortController>();
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -129,12 +132,39 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       case "provider/test":
         await this.testProvider();
         return;
+      case "session/new": {
+        const session = await this.dependencies.sessions.create();
+        this.activeSessionId = session.id;
+        await this.postSessionState();
+        return;
+      }
+      case "session/select":
+        if (!this.dependencies.sessions.get(message.sessionId)) {
+          throw new Error("选择的对话不存在或已经被删除。");
+        }
+        this.activeSessionId = message.sessionId;
+        await this.postSessionState();
+        return;
+      case "session/delete": {
+        const fallback = await this.dependencies.sessions.remove(message.sessionId);
+        if (this.activeSessionId === message.sessionId) {
+          this.activeSessionId = fallback.id;
+        }
+        await this.postSessionState();
+        return;
+      }
+      case "session/rename":
+        await this.dependencies.sessions.rename(message.sessionId, message.title);
+        await this.postSessionState();
+        return;
       case "chat/send":
         await this.beginChat(
           message.requestId,
+          message.sessionId,
           message.text,
           message.mode,
           message.includeActiveEditor,
+          message.includeWorkspace,
         );
         return;
       case "chat/cancel":
@@ -155,6 +185,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         return;
       case "test/run":
         await this.confirmAndRunTests();
+        return;
+      case "project/analyze": {
+        await this.post({ type: "project/analyzing" });
+        const overview = await this.dependencies.workspace.analyzeProject();
+        await this.post({ type: "project/result", overview });
+        return;
+      }
+      case "ui/open-settings":
+        await vscode.commands.executeCommand("workbench.view.extension.aiCodingAssistant");
+        await vscode.commands.executeCommand("aiCodingAssistant.modelsView.focus");
         return;
     }
   }
@@ -190,22 +230,42 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   private async beginChat(
     requestId: string,
+    sessionId: string,
     text: string,
     mode: ChatMode,
     includeActiveEditor: boolean,
+    includeWorkspace: boolean,
   ): Promise<void> {
     if (this.requests.has(requestId)) {
       throw new Error("请求 ID 重复。");
     }
+    const session = this.dependencies.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("当前对话不存在，请新建对话后重试。");
+    }
+    const history = session.messages.map((message) => ({
+      role: message.role,
+      content: message.text,
+    }));
+    const userMessage = await this.dependencies.sessions.appendUser(sessionId, text, mode);
+    this.activeSessionId = sessionId;
     const controller = new AbortController();
     this.requests.set(requestId, controller);
-    await this.post({ type: "chat/accepted", requestId, text, mode });
+    await this.post({
+      type: "chat/accepted",
+      requestId,
+      sessionId,
+      userMessage,
+      sessions: this.dependencies.sessions.list(),
+    });
     try {
       const result = await this.dependencies.chat.send(
         {
           text,
           mode,
           includeActiveEditor,
+          includeWorkspace,
+          history,
           signal: controller.signal,
         },
         (event) => {
@@ -214,17 +274,24 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           }
         },
       );
+      await this.dependencies.sessions.appendAssistant(sessionId, requestId, result.answer);
       await this.post({
         type: "chat/complete",
         requestId,
+        sessionId,
         changeIds: result.changes.map((change) => change.id),
       });
+      await this.postSessionState();
     } catch (error) {
+      const message = controller.signal.aborted ? "生成已停止。" : this.errorMessage(error);
+      await this.dependencies.sessions.appendError(sessionId, requestId, message);
       await this.post({
         type: "chat/error",
         requestId,
-        message: controller.signal.aborted ? "生成已停止。" : this.errorMessage(error),
+        sessionId,
+        message,
       });
+      await this.postSessionState();
     } finally {
       this.requests.delete(requestId);
     }
@@ -289,13 +356,35 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   private async pushState(): Promise<void> {
     const provider = await this.dependencies.configs.get();
+    const activeSession = await this.resolveActiveSession();
     await this.post({
       type: "state/snapshot",
       viewKind: this.kind,
       ...(provider ? { provider } : {}),
       changes: this.changeViews(this.dependencies.changes.list()),
       workspaceTrusted: vscode.workspace.isTrusted,
+      sessions: this.dependencies.sessions.list(),
+      activeSession,
     });
+  }
+
+  private async postSessionState(): Promise<void> {
+    const activeSession = await this.resolveActiveSession();
+    await this.post({
+      type: "sessions/state",
+      sessions: this.dependencies.sessions.list(),
+      activeSession,
+    });
+  }
+
+  private async resolveActiveSession() {
+    const selected =
+      this.activeSessionId === undefined
+        ? undefined
+        : this.dependencies.sessions.get(this.activeSessionId);
+    const session = selected ?? (await this.dependencies.sessions.ensure());
+    this.activeSessionId = session.id;
+    return session;
   }
 
   private changeViews(changes: readonly FileChange[]): readonly object[] {

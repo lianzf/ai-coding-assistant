@@ -4,14 +4,173 @@ import type {
   ContextAttachment,
   WorkspaceSearchResult,
 } from "../domain/workspace.js";
+import type { ProjectOverview } from "../domain/project.js";
 import { isSensitivePath } from "../security/PathPolicy.js";
 
 const defaultExclude = "**/{node_modules,.git,dist,build,out,coverage,.venv,venv,target,vendor}/**";
 const textDecoder = new TextDecoder("utf-8", { fatal: false });
+const languageNames: Readonly<Record<string, string>> = {
+  ".ts": "TypeScript",
+  ".tsx": "TypeScript React",
+  ".js": "JavaScript",
+  ".jsx": "JavaScript React",
+  ".vue": "Vue",
+  ".py": "Python",
+  ".java": "Java",
+  ".kt": "Kotlin",
+  ".go": "Go",
+  ".rs": "Rust",
+  ".cs": "C#",
+  ".cpp": "C++",
+  ".c": "C",
+  ".php": "PHP",
+  ".rb": "Ruby",
+  ".swift": "Swift",
+  ".dart": "Dart",
+  ".sql": "SQL",
+  ".md": "Markdown",
+  ".json": "JSON",
+  ".yaml": "YAML",
+  ".yml": "YAML",
+};
+const technologyDependencies: Readonly<Record<string, string>> = {
+  react: "React",
+  vue: "Vue",
+  "@angular/core": "Angular",
+  next: "Next.js",
+  nuxt: "Nuxt",
+  vite: "Vite",
+  express: "Express",
+  fastify: "Fastify",
+  "@nestjs/core": "NestJS",
+  electron: "Electron",
+  typescript: "TypeScript",
+  vitest: "Vitest",
+  jest: "Jest",
+  mocha: "Mocha",
+  playwright: "Playwright",
+  cypress: "Cypress",
+};
 
 export class WorkspaceService {
-  public async buildContext(prompt: string, includeActiveEditor: boolean): Promise<BuiltContext> {
-    if (includeActiveEditor || /@workspace\b|@file\(|@search\(/.test(prompt)) {
+  public async analyzeProject(): Promise<ProjectOverview> {
+    this.requireTrustedWorkspace();
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) {
+      throw new Error("请先在 VS Code 中打开一个项目或工作区。");
+    }
+
+    const maximumFiles = vscode.workspace
+      .getConfiguration("aiCodingAssistant")
+      .get<number>("maxIndexFiles", 4_000);
+    const discovered = await vscode.workspace.findFiles("**/*", defaultExclude, maximumFiles);
+    const files = discovered.filter((uri) => !isSensitivePath(uri.path));
+    const languageCounts = new Map<string, number>();
+    const modules = new Set<string>();
+    const entryFiles: string[] = [];
+    const configurationFiles: string[] = [];
+    const packageManagers = new Set<string>();
+    const technologies = new Set<string>();
+    const scripts: Record<string, string> = {};
+    let testFileCount = 0;
+
+    for (const uri of files) {
+      const relativePath = vscode.workspace.asRelativePath(uri, false).replaceAll("\\", "/");
+      const extension = this.extension(relativePath);
+      const language = languageNames[extension];
+      if (language) {
+        languageCounts.set(language, (languageCounts.get(language) ?? 0) + 1);
+      }
+
+      const segments = relativePath.split("/");
+      if (segments.length > 1 && segments[0]) {
+        modules.add(segments[0]);
+      }
+      const fileName = segments.at(-1)?.toLocaleLowerCase() ?? "";
+      if (/(?:^|[._-])(?:test|spec)\.[^.]+$/i.test(fileName) || /\/tests?\//i.test(relativePath)) {
+        testFileCount += 1;
+      }
+      if (
+        /^(?:src\/)?(?:index|main|app|server|extension)\.(?:ts|tsx|js|jsx|py|java|go|rs)$/i.test(
+          relativePath,
+        )
+      ) {
+        entryFiles.push(relativePath);
+      }
+      if (
+        /^(?:package\.json|tsconfig(?:\.[^.]+)?\.json|vite\.config\.|webpack\.config\.|vue\.config\.|next\.config\.|pyproject\.toml|requirements\.txt|pom\.xml|build\.gradle|go\.mod|cargo\.toml|dockerfile|docker-compose|\.github\/workflows)/i.test(
+          relativePath,
+        )
+      ) {
+        configurationFiles.push(relativePath);
+      }
+      this.detectPackageManager(fileName, packageManagers);
+    }
+
+    for (const folder of folders) {
+      const packageUri = vscode.Uri.joinPath(folder.uri, "package.json");
+      try {
+        const parsed = JSON.parse(await this.readText(packageUri, 1_000_000)) as unknown;
+        if (!this.isRecord(parsed)) {
+          continue;
+        }
+        const packageScripts = this.isRecord(parsed.scripts) ? parsed.scripts : {};
+        for (const [name, command] of Object.entries(packageScripts)) {
+          if (typeof command === "string") {
+            scripts[folders.length > 1 ? `${folder.name}:${name}` : name] = command;
+          }
+        }
+        const dependencies = {
+          ...(this.isRecord(parsed.dependencies) ? parsed.dependencies : {}),
+          ...(this.isRecord(parsed.devDependencies) ? parsed.devDependencies : {}),
+        };
+        for (const dependency of Object.keys(dependencies)) {
+          const technology = technologyDependencies[dependency];
+          if (technology) {
+            technologies.add(technology);
+          }
+        }
+      } catch {
+        // A missing or malformed package.json is reported through the structural overview instead.
+      }
+    }
+
+    for (const language of languageCounts.keys()) {
+      if (language !== "JSON" && language !== "Markdown" && language !== "YAML") {
+        technologies.add(language);
+      }
+    }
+
+    const truncated = discovered.length >= maximumFiles;
+    return {
+      workspaceName: vscode.workspace.name ?? folders.map((folder) => folder.name).join(", "),
+      roots: folders.map((folder) => folder.name),
+      fileCount: files.length,
+      testFileCount,
+      languages: [...languageCounts.entries()]
+        .map(([name, count]) => ({ name, count }))
+        .sort((left, right) => right.count - left.count)
+        .slice(0, 12),
+      technologies: [...technologies].sort(),
+      modules: [...modules].sort().slice(0, 30),
+      entryFiles: entryFiles.slice(0, 20),
+      configurationFiles: configurationFiles.slice(0, 30),
+      scripts,
+      packageManagers: [...packageManagers].sort(),
+      warnings: truncated
+        ? [`项目文件数量达到索引上限 ${maximumFiles}，当前概览可能不完整。`]
+        : [],
+      truncated,
+      analyzedAt: new Date().toISOString(),
+    };
+  }
+
+  public async buildContext(
+    prompt: string,
+    includeActiveEditor: boolean,
+    includeWorkspace = false,
+  ): Promise<BuiltContext> {
+    if (includeActiveEditor || includeWorkspace || /@workspace\b|@file\(|@search\(/.test(prompt)) {
       this.requireTrustedWorkspace();
     }
     const attachments: ContextAttachment[] = [];
@@ -45,7 +204,7 @@ export class WorkspaceService {
       });
     }
 
-    if (prompt.includes("@workspace")) {
+    if (includeWorkspace || prompt.includes("@workspace")) {
       const files = await vscode.workspace.findFiles("**/*", defaultExclude, 200);
       attachments.push({
         title: "工作区文件结构",
@@ -195,6 +354,37 @@ export class WorkspaceService {
     return [...prompt.matchAll(expression)]
       .map((match) => match[1]?.trim())
       .filter((value): value is string => Boolean(value));
+  }
+
+  private extension(path: string): string {
+    const fileName = path.split("/").at(-1) ?? "";
+    const index = fileName.lastIndexOf(".");
+    return index >= 0 ? fileName.slice(index).toLocaleLowerCase() : "";
+  }
+
+  private detectPackageManager(fileName: string, packageManagers: Set<string>): void {
+    const names: Readonly<Record<string, string>> = {
+      "pnpm-lock.yaml": "pnpm",
+      "package-lock.json": "npm",
+      "yarn.lock": "Yarn",
+      "bun.lock": "Bun",
+      "bun.lockb": "Bun",
+      "poetry.lock": "Poetry",
+      "uv.lock": "uv",
+      "pipfile.lock": "Pipenv",
+      "go.mod": "Go Modules",
+      "cargo.lock": "Cargo",
+      "pom.xml": "Maven",
+      "gradlew": "Gradle",
+    };
+    const manager = names[fileName];
+    if (manager) {
+      packageManagers.add(manager);
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private fitBudget(

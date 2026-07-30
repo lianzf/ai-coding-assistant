@@ -1,4 +1,4 @@
-export type ChatMode = "ask" | "explain" | "edit" | "agent" | "review" | "test" | "document";
+export type ChatMode = "ask" | "plan" | "agent";
 
 export interface ProviderConfig {
   readonly id: string;

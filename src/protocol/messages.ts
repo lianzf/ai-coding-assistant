@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const chatModeSchema = z.enum(["ask", "explain", "edit", "agent", "review", "test", "document"]);
+const chatModeSchema = z.enum(["ask", "plan", "agent"]);
 
 const readySchema = z
   .object({
@@ -37,9 +37,39 @@ const chatSendSchema = z
   .object({
     type: z.literal("chat/send"),
     requestId: z.string().uuid(),
+    sessionId: z.string().uuid(),
     text: z.string().trim().min(1).max(100_000),
     mode: chatModeSchema,
     includeActiveEditor: z.boolean(),
+    includeWorkspace: z.boolean(),
+  })
+  .strict();
+
+const sessionNewSchema = z
+  .object({
+    type: z.literal("session/new"),
+  })
+  .strict();
+
+const sessionSelectSchema = z
+  .object({
+    type: z.literal("session/select"),
+    sessionId: z.string().uuid(),
+  })
+  .strict();
+
+const sessionDeleteSchema = z
+  .object({
+    type: z.literal("session/delete"),
+    sessionId: z.string().uuid(),
+  })
+  .strict();
+
+const sessionRenameSchema = z
+  .object({
+    type: z.literal("session/rename"),
+    sessionId: z.string().uuid(),
+    title: z.string().trim().min(1).max(100),
   })
   .strict();
 
@@ -70,6 +100,18 @@ const runTestsSchema = z
   })
   .strict();
 
+const projectAnalyzeSchema = z
+  .object({
+    type: z.literal("project/analyze"),
+  })
+  .strict();
+
+const openSettingsSchema = z
+  .object({
+    type: z.literal("ui/open-settings"),
+  })
+  .strict();
+
 export const inboundMessageSchema = z.discriminatedUnion("type", [
   readySchema,
   providerSaveSchema,
@@ -77,9 +119,15 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   providerActionSchema,
   chatSendSchema,
   chatCancelSchema,
+  sessionNewSchema,
+  sessionSelectSchema,
+  sessionDeleteSchema,
+  sessionRenameSchema,
   searchSchema,
   changeActionSchema,
   runTestsSchema,
+  projectAnalyzeSchema,
+  openSettingsSchema,
 ]);
 
 export type InboundMessage = z.infer<typeof inboundMessageSchema>;

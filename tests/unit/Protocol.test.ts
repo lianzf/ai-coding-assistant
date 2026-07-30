@@ -6,9 +6,11 @@ describe("Webview protocol", () => {
     const result = inboundMessageSchema.safeParse({
       type: "chat/send",
       requestId: "4f9ee5da-1f69-4ed3-bf00-59c2c22094df",
+      sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
       text: "explain this",
-      mode: "explain",
+      mode: "plan",
       includeActiveEditor: true,
+      includeWorkspace: false,
     });
     expect(result.success).toBe(true);
   });

@@ -117,7 +117,7 @@ export class ChatSessionStore {
 
   private sessions(): readonly ChatSession[] {
     const stored = this.state.get<readonly ChatSession[]>(storageKey, []);
-    return Array.isArray(stored) ? stored : [];
+    return Array.isArray(stored) ? (stored as readonly ChatSession[]) : [];
   }
 
   private async replace(
