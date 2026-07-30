@@ -17,13 +17,13 @@ VSIX 已包含 React Webview、Extension Host 代码、样式和图标，运行�
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.9.0.vsix -Algorithm SHA256
+Get-FileHash .\ai-coding-assistant-0.10.0.vsix -Algorithm SHA256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.9.0.vsix
+sha256sum ai-coding-assistant-0.10.0.vsix
 ```
 
 结果必须与 `.sha256` 文件一致。
@@ -31,7 +31,7 @@ sha256sum ai-coding-assistant-0.9.0.vsix
 ## 安装与升级
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.9.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.10.0.vsix --force
 ```
 
 也可以在 VS Code 的 Extensions 视图中选择“从 VSIX 安装”。
@@ -43,7 +43,7 @@ code --uninstall-extension local-project.ai-coding-assistant
 code --install-extension ./ai-coding-assistant-previous.vsix --force
 ```
 
-升级会自动保留旧版 `default` 模型配置和密钥。卸载扩展不会把 API Key 写到普通文件；各模型密钥由 VS Code SecretStorage 分别管理。
+升级会自动保留旧版 `default` 模型配置和密钥。0.10 版本开始，升级后新生成的会话归档、待审核变更和任务检查点也会按工作区持久化。卸载扩展不会把 API Key 写到普通文件；各模型密钥由 VS Code SecretStorage 分别管理。
 
 ## 银河麒麟兼容说明
 
@@ -63,3 +63,5 @@ code --install-extension ./ai-coding-assistant-previous.vsix --force
 没有模型连接时，插件仍可安装、激活和显示本地 UI，但模型对话、修改生成和测试生成不可用。
 
 也可以在“设置 → 权限与离线模式”中把“模型网络访问”设为“关闭”。此时插件会在模型 Provider 边界阻止外部请求，本地项目概览、会话、Diff 审核等能力仍可使用。
+
+排查离线安装或激活问题时，可在“设置 → 日志与诊断”复制本地脱敏摘要。该摘要不含 API Key、模型地址、工作区路径或代码内容。

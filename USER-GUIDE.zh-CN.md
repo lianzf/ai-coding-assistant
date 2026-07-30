@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.9.x`。
+本文档适用于 AI Coding Assistant `0.10.x`。
 
 插件标识：
 
@@ -17,6 +17,10 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 - 流式 AI 对话；
 - 对最近一条 AI 回复进行安全重新生成；
 - 本地高亮、复制和送审 AI 代码块；
+- 归档和恢复按工作区持久化的会话；
+- 在 VS Code 重载后恢复待审核变更与任务检查点；
+- 通过首次使用向导完成工作区信任、模型配置和连接测试；
+- 复制不含密钥、地址、路径或代码的脱敏诊断摘要；
 - 读取当前文件、选区和工作区代码；
 - 搜索工作区文本；
 - 生成代码修改并使用 VS Code 原生 Diff 审核；
@@ -53,9 +57,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.9.0.vsix
-ai-coding-assistant-0.9.0.vsix.sha256
-ai-coding-assistant-0.9.0.metadata.json
+ai-coding-assistant-0.10.0.vsix
+ai-coding-assistant-0.10.0.vsix.sha256
+ai-coding-assistant-0.10.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -63,15 +67,15 @@ ai-coding-assistant-0.9.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.9.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.9.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.10.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.10.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.9.0.vsix
-cat ai-coding-assistant-0.9.0.vsix.sha256
+sha256sum ai-coding-assistant-0.10.0.vsix
+cat ai-coding-assistant-0.10.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -84,13 +88,13 @@ cat ai-coding-assistant-0.9.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.9.0.vsix`。
+5. 选择 `ai-coding-assistant-0.10.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.9.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.10.0.vsix --force
 ```
 
 检查安装结果：
@@ -103,13 +107,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.9.0
+local-project.ai-coding-assistant@0.10.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.9.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.10.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -126,7 +130,7 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 
 升级后必须重新加载 VS Code 窗口。
 
-从 `0.3.x` 至 `0.8.x` 升级到 `0.9.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。
+从 `0.3.x` 至 `0.9.x` 升级到 `0.10.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。旧版变更记录未持久化，只有升级后新生成的变更和检查点可以跨重载恢复。
 
 ### 4.5 卸载
 
@@ -139,10 +143,12 @@ code --uninstall-extension local-project.ai-coding-assistant
 ## 5. 首次启动
 
 1. 打开需要处理的项目文件夹。
-2. 如果 VS Code 显示工作区信任提示，请确认该项目可信后再授予信任。
-3. 点击 Activity Bar 中的 **AI Coding Assistant** 图标。
-4. 使用 **AI 编程**主视图中的“对话、项目、变更”三个入口。
-5. 模型配置位于默认折叠的 **设置**视图，也可以点击主视图右上角的模型名称或齿轮。
+2. 点击 Activity Bar 中的 **AI Coding Assistant** 图标。
+3. 新对话会显示三步首次使用向导。
+4. 如果工作区尚未受信任，点击“管理工作区信任”，确认项目可信后再授予信任。
+5. 点击“打开模型与安全设置”，保存模型和 API Key。
+6. 在设置页点击“测试连接”；只有真实测试成功后，向导才会完成。
+7. 使用 **AI 编程**主视图中的“对话、项目、变更”三个入口。
 
 也可以按 `Ctrl+Shift+P` 打开命令面板，然后运行：
 
@@ -199,7 +205,7 @@ Model ID：deepseek-v4-pro
 已配置；留空表示不修改
 ```
 
-以后只修改 Base URL 或 Model ID 时，不需要重新输入 API Key。
+以后只修改 Base URL 或 Model ID 时，不需要重新输入 API Key，但保存配置会清除旧连接测试状态，必须重新点击“测试连接”。单独替换或移除 API Key 也会使旧测试状态失效。
 
 ### 6.4 多模型与模式路由
 
@@ -276,7 +282,11 @@ Model ID：deepseek-v4-pro
 - 新建对话；
 - 切换当前工作区的历史对话；
 - 重命名或删除对话；
+- 归档暂时不用的对话；
+- 从历史列表选择已归档对话并恢复；
 - 在重新加载 VS Code 后恢复多轮上下文。
+
+已归档对话为只读状态，不能继续发送、重试或执行其中的计划。恢复后才可继续协作。插件最多保留 50 个会话，每个会话最多保留最近 80 条消息。
 
 ### 7.5 当前文件与选区
 
@@ -460,6 +470,8 @@ Model ID：deepseek-v4-pro
 
 所有回滚操作都需要在 Extension Host 的模态确认框中再次确认。
 
+变更状态和任务检查点按工作区保存，重新加载 VS Code 后仍可恢复待审核、已应用、冲突和回滚状态。插件最多保存最近 100 个变更、约 2000 万字符，并按整个任务组原子保留；达到上限时会丢弃较旧的完整任务组，不会只恢复一个检查点中的部分文件。敏感路径不会写入变更历史。
+
 ## 10. 生成单元测试
 
 ### 10.1 从编辑器生成
@@ -595,6 +607,12 @@ Webview 不能自行指定“已应用文件”，Extension Host 会重新读取
 
 插件不接受模型提供的任意终端命令，只运行内部检测出的固定测试命令。执行前必须获得用户确认。
 
+### 14.6 脱敏诊断
+
+打开“设置 → 日志与诊断”，点击“复制脱敏诊断信息”。摘要包含插件和 VS Code 版本、操作系统与 CPU 架构、工作区信任、项目索引状态、已配置模型数量、权限、会话和变更状态计数。
+
+摘要不会包含 API Key、Base URL、工作区路径或代码内容。发送给技术支持前仍应自行检查剪贴板内容。
+
 ## 15. 常见问题
 
 ### 15.1 提示“请先保存 OpenAI Compatible 配置”
@@ -686,6 +704,7 @@ Webview 不能自行指定“已应用文件”，Extension Host 会重新读取
 - [ ] 扩展 ID 和版本正确；
 - [ ] AI Coding Assistant 图标正常显示；
 - [ ] 工作区信任状态正确；
+- [ ] 首次使用向导能进入信任管理和模型设置；
 - [ ] 模型配置可以保存；
 - [ ] 可以添加第二个模型并独立保存密钥；
 - [ ] 问答、规划、执行可以分配不同默认模型；
@@ -696,6 +715,7 @@ Webview 不能自行指定“已应用文件”，Extension Host 会重新读取
 - [ ] 终端输出中的常见凭据会被遮盖；
 - [ ] 密钥状态显示“已安全配置”；
 - [ ] 测试连接成功；
+- [ ] 修改模型配置后旧连接测试状态会失效；
 - [ ] 流式对话可以正常返回；
 - [ ] 最近一条 AI 回复可以重新生成；
 - [ ] 代码块可以复制并送入变更中心；
@@ -711,11 +731,14 @@ Webview 不能自行指定“已应用文件”，Extension Host 会重新读取
 - [ ] 测试命令运行前会要求确认；
 - [ ] 执行模式请求测试时会逐次显示命令审批；
 - [ ] Agent 能收到测试成功或失败结果并继续回答；
+- [ ] 归档的会话只读且可以恢复；
+- [ ] 重载 VS Code 后待审核变更和检查点可以恢复；
+- [ ] 脱敏诊断不包含密钥、模型地址、工作区路径或代码；
 - [ ] 离线环境下插件可以正常安装和激活。
 
 ## 18. 技术支持所需信息
 
-反馈问题时，请提供：
+反馈问题时，优先在“设置 → 日志与诊断”复制脱敏摘要，并补充：
 
 - 操作系统及版本；
 - CPU 架构；
