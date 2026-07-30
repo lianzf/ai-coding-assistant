@@ -28,6 +28,18 @@ describe("Webview protocol", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts session and project workbench actions", () => {
+    expect(inboundMessageSchema.safeParse({ type: "session/new" }).success).toBe(true);
+    expect(inboundMessageSchema.safeParse({ type: "project/analyze" }).success).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "session/rename",
+        sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+        title: "项目升级",
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects unknown fields on security-sensitive messages", () => {
     const result = inboundMessageSchema.safeParse({
       type: "provider/set-key",

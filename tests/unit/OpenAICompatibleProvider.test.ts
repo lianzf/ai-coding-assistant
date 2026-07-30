@@ -92,4 +92,33 @@ describe("OpenAICompatibleProvider", () => {
     expect(authorization).toBe("Bearer top-secret");
     expect(JSON.stringify(result)).not.toContain("top-secret");
   });
+
+  it("turns provider HTTP failures into actionable Chinese messages", async () => {
+    const fetchImpl: typeof fetch = () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "Insufficient Balance",
+              code: "invalid_request_error",
+            },
+          }),
+          { status: 402 },
+        ),
+      );
+    const provider = new OpenAICompatibleProvider(fetchImpl);
+
+    const consume = async (): Promise<void> => {
+      for await (const event of provider.streamChat(config, "secret", {
+        model: "test-model",
+        messages: [{ role: "user", content: "hello" }],
+        signal: new AbortController().signal,
+      })) {
+        expect.fail(`failed HTTP response yielded an event: ${JSON.stringify(event)}`);
+      }
+    };
+
+    await expect(consume()).rejects.toThrow("模型账户余额或额度不足");
+    await expect(consume()).rejects.toThrow("Insufficient Balance");
+  });
 });
