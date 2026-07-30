@@ -263,7 +263,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           return;
         }
         await this.post({ type: "project/analyzing" });
-        const overview = await this.dependencies.workspace.analyzeProject();
+        const overview = await this.dependencies.workspace.analyzeProject(message.force === true);
         await this.post({ type: "project/result", overview });
         return;
       }
@@ -599,6 +599,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   private async pushState(): Promise<void> {
     const providers = await this.dependencies.configs.list();
     const providerAssignments = this.dependencies.configs.getAssignments();
+    const projectOverview = this.dependencies.workspace.cachedProjectOverview();
     const activeSession = await this.resolveActiveSession();
     await this.post({
       type: "state/snapshot",
@@ -608,6 +609,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       providerAssignments,
       permissions: this.dependencies.permissions.get(),
       contexts: this.contextViews(),
+      ...(projectOverview ? { projectOverview } : {}),
       changes: this.changeViews(this.dependencies.changes.list()),
       workspaceTrusted: vscode.workspace.isTrusted,
       sessions: this.dependencies.sessions.list(),

@@ -8,6 +8,7 @@ import type { ProjectOverview } from "../domain/project.js";
 import type { PermissionGate } from "../domain/permission.js";
 import { isSensitivePath } from "../security/PathPolicy.js";
 import { sanitizeGitDiff } from "../security/ContentRedactor.js";
+import type { ProjectOverviewCache } from "./ProjectOverviewCache.js";
 
 interface GitExtension {
   readonly enabled: boolean;
@@ -20,7 +21,21 @@ interface GitApi {
 
 interface GitRepository {
   readonly rootUri: vscode.Uri;
+  readonly state: {
+    readonly HEAD?: {
+      readonly name?: string;
+      readonly commit?: string;
+    };
+    readonly workingTreeChanges: readonly GitChange[];
+    readonly indexChanges: readonly GitChange[];
+    readonly untrackedChanges: readonly GitChange[];
+    readonly mergeChanges: readonly GitChange[];
+  };
   diff(cached?: boolean): Promise<string>;
+}
+
+interface GitChange {
+  readonly uri: vscode.Uri;
 }
 
 const defaultExclude = "**/{node_modules,.git,dist,build,out,coverage,.venv,venv,target,vendor}/**";
@@ -68,8 +83,33 @@ const technologyDependencies: Readonly<Record<string, string>> = {
   cypress: "Cypress",
 };
 
-export class WorkspaceService {
-  public constructor(private readonly permissions: PermissionGate) {}
+export class WorkspaceService implements vscode.Disposable {
+  private readonly watcher = vscode.workspace.createFileSystemWatcher("**/*");
+  private readonly watcherSubscriptions: vscode.Disposable[];
+  private dirty = false;
+
+  public constructor(
+    private readonly permissions: PermissionGate,
+    private readonly cache: ProjectOverviewCache,
+  ) {
+    const invalidate = (uri: vscode.Uri): void => {
+      if (!this.isIgnoredPath(uri.path)) {
+        this.dirty = true;
+      }
+    };
+    this.watcherSubscriptions = [
+      this.watcher.onDidCreate(invalidate),
+      this.watcher.onDidChange(invalidate),
+      this.watcher.onDidDelete(invalidate),
+    ];
+  }
+
+  public dispose(): void {
+    this.watcher.dispose();
+    for (const subscription of this.watcherSubscriptions) {
+      subscription.dispose();
+    }
+  }
 
   public async listFiles(requestedLimit = 500): Promise<readonly string[]> {
     this.requireTrustedWorkspace();
@@ -81,11 +121,26 @@ export class WorkspaceService {
       .sort();
   }
 
-  public async analyzeProject(): Promise<ProjectOverview> {
+  public cachedProjectOverview(): ProjectOverview | undefined {
+    if (this.dirty || !vscode.workspace.isTrusted || this.permissions.get().read === "deny") {
+      return undefined;
+    }
+    const rootKey = this.rootKey();
+    return rootKey ? this.cache.get(rootKey) : undefined;
+  }
+
+  public async analyzeProject(force = false): Promise<ProjectOverview> {
     this.requireTrustedWorkspace();
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
       throw new Error("请先在 VS Code 中打开一个项目或工作区。");
+    }
+    const rootKey = this.rootKey();
+    if (!force && !this.dirty && rootKey) {
+      const cached = this.cache.get(rootKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     const maximumFiles = vscode.workspace
@@ -99,6 +154,8 @@ export class WorkspaceService {
     const configurationFiles: string[] = [];
     const packageManagers = new Set<string>();
     const technologies = new Set<string>();
+    const dependencies = new Set<string>();
+    const devDependencies = new Set<string>();
     const scripts: Record<string, string> = {};
     let testFileCount = 0;
 
@@ -148,11 +205,20 @@ export class WorkspaceService {
             scripts[folders.length > 1 ? `${folder.name}:${name}` : name] = command;
           }
         }
-        const dependencies = {
-          ...(this.isRecord(parsed.dependencies) ? parsed.dependencies : {}),
-          ...(this.isRecord(parsed.devDependencies) ? parsed.devDependencies : {}),
-        };
-        for (const dependency of Object.keys(dependencies)) {
+        const runtimeDependencies = this.isRecord(parsed.dependencies) ? parsed.dependencies : {};
+        const developmentDependencies = this.isRecord(parsed.devDependencies)
+          ? parsed.devDependencies
+          : {};
+        for (const dependency of Object.keys(runtimeDependencies)) {
+          dependencies.add(dependency);
+        }
+        for (const dependency of Object.keys(developmentDependencies)) {
+          devDependencies.add(dependency);
+        }
+        for (const dependency of Object.keys({
+          ...runtimeDependencies,
+          ...developmentDependencies,
+        })) {
           const technology = technologyDependencies[dependency];
           if (technology) {
             technologies.add(technology);
@@ -170,7 +236,22 @@ export class WorkspaceService {
     }
 
     const truncated = discovered.length >= maximumFiles;
-    return {
+    const gitStatus = await this.projectGitStatus();
+    const sensitiveFileCount = discovered.filter((uri) => isSensitivePath(uri.path)).length;
+    const risks = this.projectRisks({
+      truncated,
+      testFileCount,
+      dependencyCount: dependencies.size + devDependencies.size,
+      sensitiveFileCount,
+      gitStatus,
+    });
+    const readingSuggestions = this.readingSuggestions(
+      configurationFiles,
+      entryFiles,
+      [...modules].sort(),
+      testFileCount,
+    );
+    const overview: ProjectOverview = {
       workspaceName: vscode.workspace.name ?? folders.map((folder) => folder.name).join(", "),
       roots: folders.map((folder) => folder.name),
       fileCount: files.length,
@@ -185,10 +266,27 @@ export class WorkspaceService {
       configurationFiles: configurationFiles.slice(0, 30),
       scripts,
       packageManagers: [...packageManagers].sort(),
+      dependencyCount: dependencies.size,
+      devDependencyCount: devDependencies.size,
+      dependencies: [...new Set([...dependencies, ...devDependencies])].sort().slice(0, 40),
+      gitStatus,
+      risks,
+      readingSuggestions,
+      index: {
+        status: truncated ? "partial" : "ready",
+        cached: false,
+        maximumFiles,
+        validUntil: new Date(Date.now() + 15 * 60_000).toISOString(),
+      },
       warnings: truncated ? [`项目文件数量达到索引上限 ${maximumFiles}，当前概览可能不完整。`] : [],
       truncated,
       analyzedAt: new Date().toISOString(),
     };
+    if (rootKey) {
+      await this.cache.save(rootKey, overview);
+    }
+    this.dirty = false;
+    return overview;
   }
 
   public async createDirectoryContext(uri: vscode.Uri): Promise<ContextAttachment> {
@@ -214,19 +312,9 @@ export class WorkspaceService {
 
   public async createGitDiffContext(): Promise<ContextAttachment> {
     this.requireTrustedWorkspace();
-    const extension = vscode.extensions.getExtension<GitExtension>("vscode.git");
-    if (!extension) {
-      throw new Error("当前 VS Code 未提供内置 Git 扩展，无法读取 Git Diff。");
-    }
-    const exports = extension.isActive ? extension.exports : await extension.activate();
-    if (!exports.enabled) {
-      throw new Error("VS Code 内置 Git 功能已禁用。");
-    }
-    const repository = exports
-      .getAPI(1)
-      .repositories.find((item) => vscode.workspace.getWorkspaceFolder(item.rootUri));
+    const repository = await this.gitRepository();
     if (!repository) {
-      throw new Error("当前工作区未检测到 Git 仓库。");
+      throw new Error("当前 VS Code 未提供内置 Git 扩展，无法读取 Git Diff。");
     }
     const [workingTree, staged] = await Promise.all([
       repository.diff(false),
@@ -468,6 +556,126 @@ export class WorkspaceService {
     if (manager) {
       packageManagers.add(manager);
     }
+  }
+
+  private async gitRepository(): Promise<GitRepository | undefined> {
+    const extension = vscode.extensions.getExtension<GitExtension>("vscode.git");
+    if (!extension) {
+      return undefined;
+    }
+    const exports = extension.isActive ? extension.exports : await extension.activate();
+    if (!exports.enabled) {
+      return undefined;
+    }
+    return exports
+      .getAPI(1)
+      .repositories.find((item) => vscode.workspace.getWorkspaceFolder(item.rootUri));
+  }
+
+  private async projectGitStatus(): Promise<ProjectOverview["gitStatus"]> {
+    try {
+      const repository = await this.gitRepository();
+      if (!repository) {
+        return this.emptyGitStatus();
+      }
+      const state = repository.state;
+      const changed = new Set(
+        [
+          ...state.workingTreeChanges,
+          ...state.indexChanges,
+          ...state.untrackedChanges,
+          ...state.mergeChanges,
+        ].map((change) => change.uri.toString()),
+      );
+      return {
+        available: true,
+        branch: state.HEAD?.name ?? state.HEAD?.commit?.slice(0, 8) ?? "未提交分支",
+        changedFiles: changed.size,
+        stagedFiles: state.indexChanges.length,
+        untrackedFiles: state.untrackedChanges.length,
+        conflictedFiles: state.mergeChanges.length,
+      };
+    } catch {
+      return this.emptyGitStatus();
+    }
+  }
+
+  private emptyGitStatus(): ProjectOverview["gitStatus"] {
+    return {
+      available: false,
+      branch: "",
+      changedFiles: 0,
+      stagedFiles: 0,
+      untrackedFiles: 0,
+      conflictedFiles: 0,
+    };
+  }
+
+  private projectRisks(input: {
+    readonly truncated: boolean;
+    readonly testFileCount: number;
+    readonly dependencyCount: number;
+    readonly sensitiveFileCount: number;
+    readonly gitStatus: ProjectOverview["gitStatus"];
+  }): readonly string[] {
+    const risks: string[] = [];
+    if (input.truncated) {
+      risks.push("项目规模超过当前索引上限，画像和搜索结果可能不完整。");
+    }
+    if (input.testFileCount === 0) {
+      risks.push("未识别到测试文件，修改后的自动验证能力可能不足。");
+    }
+    if (input.dependencyCount > 150) {
+      risks.push(`直接依赖和开发依赖共 ${input.dependencyCount} 个，升级与供应链影响面较大。`);
+    }
+    if (input.sensitiveFileCount > 0) {
+      risks.push(`检测到 ${input.sensitiveFileCount} 个敏感路径文件，已从索引和上下文中排除。`);
+    }
+    if (input.gitStatus.conflictedFiles > 0) {
+      risks.push(`Git 工作区存在 ${input.gitStatus.conflictedFiles} 个冲突文件，请先处理冲突。`);
+    } else if (input.gitStatus.changedFiles > 50) {
+      risks.push(`Git 工作区已有 ${input.gitStatus.changedFiles} 个变更文件，建议先建立基线提交。`);
+    }
+    return risks;
+  }
+
+  private readingSuggestions(
+    configurationFiles: readonly string[],
+    entryFiles: readonly string[],
+    modules: readonly string[],
+    testFileCount: number,
+  ): readonly string[] {
+    const suggestions: string[] = [];
+    const packageFile = configurationFiles.find((path) => path.endsWith("package.json"));
+    if (packageFile) {
+      suggestions.push(`先阅读 ${packageFile}，了解依赖、脚本和项目元数据。`);
+    }
+    if (entryFiles[0]) {
+      suggestions.push(`从入口文件 ${entryFiles[0]} 跟踪启动和主要调用链。`);
+    }
+    if (modules.length > 0) {
+      suggestions.push(`按模块顺序阅读：${modules.slice(0, 5).join(" → ")}。`);
+    }
+    if (testFileCount > 0) {
+      suggestions.push("结合现有测试文件理解关键行为、边界条件和回归约束。");
+    }
+    return suggestions;
+  }
+
+  private rootKey(): string | undefined {
+    const folders = vscode.workspace.workspaceFolders;
+    return folders?.length
+      ? folders
+          .map((folder) => folder.uri.toString())
+          .sort()
+          .join("|")
+      : undefined;
+  }
+
+  private isIgnoredPath(path: string): boolean {
+    return /(?:^|\/)(?:node_modules|\.git|dist|build|out|coverage|\.venv|venv|target|vendor)(?:\/|$)/i.test(
+      path.replaceAll("\\", "/"),
+    );
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

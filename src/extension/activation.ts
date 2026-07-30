@@ -11,6 +11,7 @@ import { SecretManager } from "../security/SecretManager.js";
 import { PermissionStore } from "../security/PermissionStore.js";
 import { TestRunner } from "../testing/TestRunner.js";
 import { WorkspaceService } from "../workspace/WorkspaceService.js";
+import { ProjectOverviewCache } from "../workspace/ProjectOverviewCache.js";
 
 export function activateExtension(context: vscode.ExtensionContext): void {
   const secrets = new SecretManager(context.secrets);
@@ -19,7 +20,8 @@ export function activateExtension(context: vscode.ExtensionContext): void {
     secrets.hasApiKey(providerId),
   );
   const provider = new OpenAICompatibleProvider(permissions);
-  const workspace = new WorkspaceService(permissions);
+  const projectCache = new ProjectOverviewCache(context.workspaceState);
+  const workspace = new WorkspaceService(permissions, projectCache);
   const sessions = new ChatSessionStore(context.workspaceState);
   const changeGateway = new VsCodeChangeGateway(workspace, permissions);
   const changes = new ChangeManager(changeGateway);
@@ -42,6 +44,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     changeGateway,
+    workspace,
     tests,
     chatView,
     modelsView,

@@ -680,7 +680,7 @@ function ProjectView(): React.JSX.Element {
           type="button"
           className="primary"
           disabled={analyzing || !workspaceTrusted}
-          onClick={() => vscode.postMessage({ type: "project/analyze" })}
+          onClick={() => vscode.postMessage({ type: "project/analyze", force: Boolean(overview) })}
         >
           {analyzing ? "正在分析…" : overview ? "重新分析" : "分析项目"}
         </button>
@@ -701,6 +701,8 @@ function ProjectView(): React.JSX.Element {
             <Metric label="文件" value={String(overview.fileCount)} />
             <Metric label="测试文件" value={String(overview.testFileCount)} />
             <Metric label="包管理器" value={overview.packageManagers.join("、") || "未识别"} />
+            <Metric label="运行依赖" value={String(overview.dependencyCount)} />
+            <Metric label="开发依赖" value={String(overview.devDependencyCount)} />
           </div>
           {overview.warnings.map((warning) => (
             <div className="warning-card" key={warning}>
@@ -723,6 +725,22 @@ function ProjectView(): React.JSX.Element {
           <OverviewSection title="主要模块">
             <TagList values={overview.modules} empty="根目录暂无明显模块" />
           </OverviewSection>
+          <OverviewSection title="依赖摘要">
+            <TagList values={overview.dependencies} empty="未识别到包依赖" />
+          </OverviewSection>
+          <OverviewSection title="Git 状态">
+            {overview.gitStatus.available ? (
+              <div className="metric-grid two">
+                <Metric label="当前分支" value={overview.gitStatus.branch} />
+                <Metric label="变更文件" value={String(overview.gitStatus.changedFiles)} />
+                <Metric label="已暂存" value={String(overview.gitStatus.stagedFiles)} />
+                <Metric label="未跟踪" value={String(overview.gitStatus.untrackedFiles)} />
+                <Metric label="冲突" value={String(overview.gitStatus.conflictedFiles)} />
+              </div>
+            ) : (
+              <p className="muted">当前工作区未检测到可用 Git 仓库。</p>
+            )}
+          </OverviewSection>
           <OverviewSection title="入口文件">
             <PathList values={overview.entryFiles} />
           </OverviewSection>
@@ -743,7 +761,32 @@ function ProjectView(): React.JSX.Element {
               </div>
             )}
           </OverviewSection>
+          <OverviewSection title="潜在风险">
+            {overview.risks.length === 0 ? (
+              <p className="muted">本次静态画像未发现明显结构风险。</p>
+            ) : (
+              overview.risks.map((risk) => (
+                <div className="warning-card" key={risk}>
+                  {risk}
+                </div>
+              ))
+            )}
+          </OverviewSection>
+          <OverviewSection title="建议阅读顺序">
+            {overview.readingSuggestions.length === 0 ? (
+              <p className="muted">暂未生成阅读建议。</p>
+            ) : (
+              <ol className="reading-list">
+                {overview.readingSuggestions.map((suggestion) => (
+                  <li key={suggestion}>{suggestion}</li>
+                ))}
+              </ol>
+            )}
+          </OverviewSection>
           <p className="analyzed-at">
+            索引状态：{overview.index.status === "ready" ? "完整" : "部分"}
+            {overview.index.cached ? " · 已复用缓存" : " · 本次重新扫描"}
+            {" · "}
             分析时间：{new Date(overview.analyzedAt).toLocaleString("zh-CN")}
           </p>
         </>

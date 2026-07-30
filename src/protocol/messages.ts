@@ -157,6 +157,7 @@ const runTestsSchema = z
 const projectAnalyzeSchema = z
   .object({
     type: z.literal("project/analyze"),
+    force: z.boolean().optional(),
   })
   .strict();
 

@@ -34,6 +34,9 @@ describe("Webview protocol", () => {
   it("accepts session and project workbench actions", () => {
     expect(inboundMessageSchema.safeParse({ type: "session/new" }).success).toBe(true);
     expect(inboundMessageSchema.safeParse({ type: "project/analyze" }).success).toBe(true);
+    expect(inboundMessageSchema.safeParse({ type: "project/analyze", force: true }).success).toBe(
+      true,
+    );
     expect(
       inboundMessageSchema.safeParse({
         type: "session/rename",

@@ -875,6 +875,16 @@ h3 {
   padding-left: 20px;
 }
 
+.reading-list {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.reading-list li {
+  margin: 7px 0;
+  line-height: 1.45;
+}
+
 .path-list li {
   margin: 4px 0;
 }
