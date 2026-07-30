@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.8.x`。
+本文档适用于 AI Coding Assistant `0.9.x`。
 
 插件标识：
 
@@ -24,6 +24,7 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 - 只有获得用户批准后才应用修改；
 - 生成单元测试；
 - 经用户确认后运行项目已有测试命令。
+- 执行模式可以请求受控测试，并把结果返回模型继续分析。
 
 ## 2. 系统要求
 
@@ -52,9 +53,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.8.0.vsix
-ai-coding-assistant-0.8.0.vsix.sha256
-ai-coding-assistant-0.8.0.metadata.json
+ai-coding-assistant-0.9.0.vsix
+ai-coding-assistant-0.9.0.vsix.sha256
+ai-coding-assistant-0.9.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -62,15 +63,15 @@ ai-coding-assistant-0.8.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.8.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.8.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.9.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.9.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.8.0.vsix
-cat ai-coding-assistant-0.8.0.vsix.sha256
+sha256sum ai-coding-assistant-0.9.0.vsix
+cat ai-coding-assistant-0.9.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -83,13 +84,13 @@ cat ai-coding-assistant-0.8.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.8.0.vsix`。
+5. 选择 `ai-coding-assistant-0.9.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.8.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.9.0.vsix --force
 ```
 
 检查安装结果：
@@ -102,13 +103,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.8.0
+local-project.ai-coding-assistant@0.9.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.8.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.9.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -125,7 +126,7 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 
 升级后必须重新加载 VS Code 窗口。
 
-从 `0.3.x` 至 `0.7.x` 升级到 `0.8.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。
+从 `0.3.x` 至 `0.8.x` 升级到 `0.9.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。
 
 ### 4.5 卸载
 
@@ -295,6 +296,10 @@ Model ID：deepseek-v4-pro
 - 获取本地项目概览。
 
 工具调用最多连续执行六轮。每一步都会在输入区上方的执行时间线中显示工具名称、目标、成功或失败状态、结果摘要和耗时。手动运行项目测试时，测试命令、运行状态、退出码和耗时也会进入同一时间线，并可在“对话”和“变更”入口查看。工具仍受工作区信任、敏感路径和最大内容长度限制，不允许直接写入文件或执行任意终端命令。
+
+在“执行”模式中，模型还可以请求 `run_project_tests`。该工具不接受模型提供的命令，而是复用插件内部的固定测试命令检测规则。每次请求都会在 Extension Host 中显示实际命令、工作目录和执行方式，只有用户点击“运行测试”后才启动进程。成功、失败、退出码、耗时和最多 4 万字符的末尾输出会作为工具结果返回模型，供其总结验证结果或继续修正；拒绝审批会作为一次失败工具结果返回，且不会执行命令。
+
+注意：首次执行回合中的候选 ChangeSet 尚未写入工作区，此时运行测试只能建立原始项目基线，不能证明候选修改有效。要验证真实修改，应先在“变更”入口完成 Diff 审核并应用，再使用“Agent 验证变更”。
 
 ## 8. 添加工作区上下文
 
@@ -496,6 +501,22 @@ AI Coding Assistant：运行单元测试
 
 只有在模态确认框中同意后才会启动进程。测试命令与执行结果会进入统一执行时间线；完整测试输出显示在 **AI Coding Assistant Tests** 输出通道，并同步显示在“变更”页面。
 
+执行模式中的 Agent 也可以主动请求同一测试流程。即使“命令执行”权限设置为“允许”，Agent 测试仍不会跳过命令详情和模态确认；设置为“关闭”时，测试工具会在实际进程边界被拒绝。
+
+### 11.1 由 Agent 验证已应用变更
+
+推荐的完整验证流程：
+
+1. 在“执行”模式生成候选修改；
+2. 到“变更”入口查看 Diff；
+3. 批准并应用最近任务检查点中的修改；
+4. 点击“Agent 验证变更”；
+5. 插件从服务端的最近已应用检查点读取文件列表，并切换回对话；
+6. Agent 请求 `run_project_tests` 时，检查命令详情并决定是否批准；
+7. 查看工具时间线、测试输出和 Agent 对结果的总结。
+
+Webview 不能自行指定“已应用文件”，Extension Host 会重新读取 `ChangeManager` 中最近的已应用检查点。没有已应用检查点、已有任务运行、工作区未受信任或执行模型缺少 API Key 时，该入口不可用。
+
 如果提示“未检测到受支持的测试命令”：
 
 1. 确认 VS Code 打开的是项目根目录；
@@ -688,6 +709,8 @@ AI Coding Assistant：运行单元测试
 - [ ] 拒绝修改时不会写入文件；
 - [ ] 批准修改后可以应用；
 - [ ] 测试命令运行前会要求确认；
+- [ ] 执行模式请求测试时会逐次显示命令审批；
+- [ ] Agent 能收到测试成功或失败结果并继续回答；
 - [ ] 离线环境下插件可以正常安装和激活。
 
 ## 18. 技术支持所需信息
