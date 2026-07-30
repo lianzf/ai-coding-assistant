@@ -1,0 +1,2 @@
+Third-party notices are generated from the dependency lockfile for release
+artifacts. Runtime dependencies remain subject to their respective licenses.

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.vsix
+artifacts/
+.test-vscode/
+.test-extensions/
+.vscode-test/
+*.log

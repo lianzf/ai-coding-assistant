@@ -1,0 +1,7 @@
+{
+  "name": "ai-coding-assistant-extension-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
