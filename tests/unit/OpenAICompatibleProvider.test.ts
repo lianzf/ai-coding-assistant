@@ -65,6 +65,84 @@ describe("OpenAICompatibleProvider", () => {
     ]);
   });
 
+  it("parses streamed tool calls and sends OpenAI-compatible tool definitions", async () => {
+    const encoder = new TextEncoder();
+    let requestBody: unknown;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"id":"req-tool","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"search_workspace","arguments":"{\\"query\\":\\"create"}}]}}]}\n\n',
+          ),
+        );
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"Order\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    const fetchImpl: typeof fetch = (_input, init) => {
+      if (typeof init?.body !== "string") {
+        throw new Error("expected a JSON string request body");
+      }
+      requestBody = JSON.parse(init.body) as unknown;
+      return Promise.resolve(
+        new Response(stream, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+    };
+    const provider = new OpenAICompatibleProvider(fetchImpl);
+    const events = [];
+
+    for await (const event of provider.streamChat(config, "secret", {
+      model: "test-model",
+      messages: [{ role: "user", content: "find it" }],
+      tools: [
+        {
+          name: "search_workspace",
+          description: "search",
+          inputSchema: {
+            type: "object",
+            properties: { query: { type: "string" } },
+            required: ["query"],
+          },
+        },
+      ],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: "start", requestId: "req-tool" },
+      {
+        type: "tool-call",
+        call: {
+          id: "call-1",
+          name: "search_workspace",
+          arguments: '{"query":"createOrder"}',
+        },
+      },
+      { type: "finish", reason: "tool_calls" },
+    ]);
+    expect(requestBody).toMatchObject({
+      tool_choice: "auto",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "search_workspace",
+          },
+        },
+      ],
+    });
+  });
+
   it("uses the models endpoint for a connection test", async () => {
     let requestedUrl = "";
     let authorization = "";

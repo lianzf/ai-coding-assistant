@@ -79,6 +79,16 @@ export interface ChatItem {
   readonly mode?: ChatMode;
 }
 
+export interface ExecutionStep {
+  readonly id: string;
+  readonly name: string;
+  readonly label: string;
+  readonly input: string;
+  readonly status: "running" | "completed" | "failed";
+  readonly summary: string;
+  readonly durationMs?: number;
+}
+
 interface AppState {
   viewKind: "chat" | "models";
   navigation: NavigationItem;
@@ -90,6 +100,8 @@ interface AppState {
   messages: readonly ChatItem[];
   searchResults: readonly SearchResult[];
   activeRequestId: string | undefined;
+  requestStatus: string | undefined;
+  executionSteps: readonly ExecutionStep[];
   notice: { readonly level: "info" | "error"; readonly message: string } | undefined;
   testRunning: boolean;
   testResult:
@@ -137,6 +149,8 @@ export const useAppStore = create<AppState>((set) => ({
   messages: [],
   searchResults: [],
   activeRequestId: undefined,
+  requestStatus: undefined,
+  executionSteps: [],
   notice: undefined,
   testRunning: false,
   testResult: undefined,
@@ -175,6 +189,9 @@ export const useAppStore = create<AppState>((set) => ({
             : state.sessions,
           activeSession,
           messages: state.activeRequestId ? state.messages : sessionMessages(activeSession),
+          executionSteps: state.activeSession?.id === activeSession?.id ? state.executionSteps : [],
+          requestStatus:
+            state.activeSession?.id === activeSession?.id ? state.requestStatus : undefined,
         }));
         break;
       }
@@ -196,6 +213,8 @@ export const useAppStore = create<AppState>((set) => ({
         const userMessage = message.userMessage as unknown as ConversationMessage;
         set((state) => ({
           activeRequestId: requestId,
+          requestStatus: "正在准备任务…",
+          executionSteps: [],
           sessions: Array.isArray(message.sessions)
             ? (message.sessions as SessionSummary[])
             : state.sessions,
@@ -220,6 +239,70 @@ export const useAppStore = create<AppState>((set) => ({
         }));
         break;
       }
+      case "chat/status":
+        if (typeof message.requestId === "string" && typeof message.message === "string") {
+          set((state) =>
+            state.activeRequestId === message.requestId
+              ? { requestStatus: message.message as string }
+              : {},
+          );
+        }
+        break;
+      case "chat/tool-start":
+        if (
+          typeof message.requestId === "string" &&
+          typeof message.callId === "string" &&
+          typeof message.name === "string" &&
+          typeof message.label === "string"
+        ) {
+          set((state) =>
+            state.activeRequestId === message.requestId
+              ? {
+                  requestStatus: `${String(message.label)}…`,
+                  executionSteps: [
+                    ...state.executionSteps,
+                    {
+                      id: message.callId as string,
+                      name: message.name as string,
+                      label: message.label as string,
+                      input: typeof message.input === "string" ? message.input : "",
+                      status: "running",
+                      summary: "",
+                    },
+                  ],
+                }
+              : {},
+          );
+        }
+        break;
+      case "chat/tool-result":
+        if (
+          typeof message.requestId === "string" &&
+          typeof message.callId === "string" &&
+          typeof message.summary === "string"
+        ) {
+          set((state) =>
+            state.activeRequestId === message.requestId
+              ? {
+                  requestStatus: message.summary as string,
+                  executionSteps: state.executionSteps.map((step) =>
+                    step.id === message.callId
+                      ? {
+                          ...step,
+                          status:
+                            message.ok === true ? ("completed" as const) : ("failed" as const),
+                          summary: message.summary as string,
+                          ...(typeof message.durationMs === "number"
+                            ? { durationMs: message.durationMs }
+                            : {}),
+                        }
+                      : step,
+                  ),
+                }
+              : {},
+          );
+        }
+        break;
       case "chat/delta":
         if (typeof message.requestId === "string" && typeof message.text === "string") {
           set((state) => ({
@@ -235,6 +318,7 @@ export const useAppStore = create<AppState>((set) => ({
         if (typeof message.requestId === "string") {
           set((state) => ({
             activeRequestId: undefined,
+            requestStatus: "任务已完成",
             messages: state.messages.map((item) =>
               item.id === message.requestId ? { ...item, pending: false } : item,
             ),
@@ -245,6 +329,7 @@ export const useAppStore = create<AppState>((set) => ({
         if (typeof message.requestId === "string" && typeof message.message === "string") {
           set((state) => ({
             activeRequestId: undefined,
+            requestStatus: "任务执行失败",
             messages: state.messages.map((item) =>
               item.id === message.requestId
                 ? {

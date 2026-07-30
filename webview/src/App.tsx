@@ -217,6 +217,8 @@ function ChatView(): React.JSX.Element {
         <div ref={endRef} />
       </div>
 
+      <ExecutionTimeline />
+
       {showContext && <ContextPanel setText={setText} />}
 
       <form className="composer" onSubmit={send}>
@@ -298,6 +300,52 @@ function ChatView(): React.JSX.Element {
           )}
         </div>
       </form>
+    </section>
+  );
+}
+
+function ExecutionTimeline(): React.JSX.Element | null {
+  const status = useAppStore((state) => state.requestStatus);
+  const steps = useAppStore((state) => state.executionSteps);
+  const running = useAppStore((state) => Boolean(state.activeRequestId));
+  const [expanded, setExpanded] = useState(true);
+
+  if (!status && steps.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="execution-timeline" aria-live="polite">
+      <button
+        type="button"
+        className="execution-summary"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+      >
+        <span className={`execution-indicator ${running ? "running" : "completed"}`} />
+        <strong>{status ?? "任务执行过程"}</strong>
+        <span>{steps.length > 0 ? `${steps.length} 个工具步骤` : ""}</span>
+        <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+      </button>
+      {expanded && steps.length > 0 && (
+        <ol className="execution-steps">
+          {steps.map((step) => (
+            <li key={step.id} className={step.status}>
+              <span className="step-icon" aria-hidden="true">
+                {step.status === "running" ? "●" : step.status === "completed" ? "✓" : "!"}
+              </span>
+              <div>
+                <strong>{step.label}</strong>
+                {step.input && <code>{step.input}</code>}
+                <span>
+                  {step.summary || "正在执行…"}
+                  {step.durationMs !== undefined ? ` · ${step.durationMs} ms` : ""}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

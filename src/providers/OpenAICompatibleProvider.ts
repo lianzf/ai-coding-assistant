@@ -9,6 +9,19 @@ import type {
 
 type FetchPort = typeof fetch;
 
+const toolCallSchema = z
+  .object({
+    id: z.string(),
+    type: z.literal("function").optional(),
+    function: z
+      .object({
+        name: z.string(),
+        arguments: z.string(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 const chunkSchema = z
   .object({
     id: z.string().optional(),
@@ -19,6 +32,23 @@ const chunkSchema = z
             delta: z
               .object({
                 content: z.string().nullable().optional(),
+                tool_calls: z
+                  .array(
+                    z
+                      .object({
+                        index: z.number().int().nonnegative(),
+                        id: z.string().optional(),
+                        type: z.literal("function").optional(),
+                        function: z
+                          .object({
+                            name: z.string().optional(),
+                            arguments: z.string().optional(),
+                          })
+                          .optional(),
+                      })
+                      .passthrough(),
+                  )
+                  .optional(),
               })
               .passthrough(),
             finish_reason: z.string().nullable().optional(),
@@ -42,7 +72,12 @@ const completionSchema = z
     choices: z.array(
       z
         .object({
-          message: z.object({ content: z.string().nullable() }).passthrough(),
+          message: z
+            .object({
+              content: z.string().nullable(),
+              tool_calls: z.array(toolCallSchema).optional(),
+            })
+            .passthrough(),
           finish_reason: z.string().nullable().optional(),
         })
         .passthrough(),
@@ -117,9 +152,22 @@ export class OpenAICompatibleProvider implements ModelProvider {
         },
         body: JSON.stringify({
           model: request.model,
-          messages: request.messages,
+          messages: this.apiMessages(request),
           stream: true,
           stream_options: { include_usage: true },
+          ...(request.tools && request.tools.length > 0
+            ? {
+                tools: request.tools.map((tool) => ({
+                  type: "function",
+                  function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.inputSchema,
+                  },
+                })),
+                tool_choice: "auto",
+              }
+            : {}),
         }),
         signal: abort.signal,
       });
@@ -148,6 +196,16 @@ export class OpenAICompatibleProvider implements ModelProvider {
     if (choice?.message.content) {
       yield { type: "text", text: choice.message.content };
     }
+    for (const toolCall of choice?.message.tool_calls ?? []) {
+      yield {
+        type: "tool-call",
+        call: {
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        },
+      };
+    }
     yield {
       type: "finish",
       reason: choice?.finish_reason ?? "stop",
@@ -170,6 +228,10 @@ export class OpenAICompatibleProvider implements ModelProvider {
     let finishReason = "stop";
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    const toolCalls = new Map<
+      number,
+      { id: string | undefined; name: string; arguments: string }
+    >();
 
     while (true) {
       const result = await reader.read();
@@ -192,6 +254,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         if (choice?.delta.content) {
           yield { type: "text", text: choice.delta.content };
         }
+        this.collectToolCalls(choice?.delta.tool_calls, toolCalls);
         if (choice?.finish_reason) {
           finishReason = choice.finish_reason;
         }
@@ -213,6 +276,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         if (choice?.delta.content) {
           yield { type: "text", text: choice.delta.content };
         }
+        this.collectToolCalls(choice?.delta.tool_calls, toolCalls);
         if (choice?.finish_reason) {
           finishReason = choice.finish_reason;
         }
@@ -223,6 +287,21 @@ export class OpenAICompatibleProvider implements ModelProvider {
 
     if (!started) {
       yield { type: "start" };
+    }
+    for (const [index, toolCall] of [...toolCalls.entries()].sort(
+      ([left], [right]) => left - right,
+    )) {
+      if (!toolCall.name) {
+        throw new Error("模型返回了缺少工具名称的工具调用。");
+      }
+      yield {
+        type: "tool-call",
+        call: {
+          id: toolCall.id ?? `tool-call-${index}`,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+        },
+      };
     }
     yield {
       type: "finish",
@@ -273,6 +352,65 @@ export class OpenAICompatibleProvider implements ModelProvider {
 
   private headers(apiKey: string): Record<string, string> {
     return apiKey.length > 0 ? { Authorization: `Bearer ${apiKey}` } : {};
+  }
+
+  private apiMessages(request: ModelChatRequest): readonly object[] {
+    return request.messages.map((message) => {
+      if (message.role === "tool") {
+        return {
+          role: "tool",
+          content: message.content,
+          tool_call_id: message.toolCallId,
+        };
+      }
+      if (message.role === "assistant" && message.toolCalls) {
+        return {
+          role: "assistant",
+          content: message.content || null,
+          tool_calls: message.toolCalls.map((call) => ({
+            id: call.id,
+            type: "function",
+            function: {
+              name: call.name,
+              arguments: call.arguments,
+            },
+          })),
+        };
+      }
+      return {
+        role: message.role,
+        content: message.content,
+      };
+    });
+  }
+
+  private collectToolCalls(
+    values:
+      | readonly {
+          readonly index: number;
+          readonly id?: string | undefined;
+          readonly function?:
+            | {
+                readonly name?: string | undefined;
+                readonly arguments?: string | undefined;
+              }
+            | undefined;
+        }[]
+      | undefined,
+    target: Map<number, { id: string | undefined; name: string; arguments: string }>,
+  ): void {
+    for (const value of values ?? []) {
+      const current = target.get(value.index) ?? {
+        id: undefined,
+        name: "",
+        arguments: "",
+      };
+      target.set(value.index, {
+        id: value.id ?? current.id,
+        name: current.name + (value.function?.name ?? ""),
+        arguments: current.arguments + (value.function?.arguments ?? ""),
+      });
+    }
   }
 
   private async httpError(response: Response): Promise<string> {

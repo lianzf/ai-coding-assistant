@@ -269,8 +269,38 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           signal: controller.signal,
         },
         (event) => {
-          if (event.type === "text") {
-            void this.post({ type: "chat/delta", requestId, text: event.text });
+          switch (event.type) {
+            case "text":
+              void this.post({ type: "chat/delta", requestId, text: event.text });
+              break;
+            case "status":
+              void this.post({
+                type: "chat/status",
+                requestId,
+                phase: event.phase,
+                message: event.message,
+              });
+              break;
+            case "tool-start":
+              void this.post({
+                type: "chat/tool-start",
+                requestId,
+                callId: event.callId,
+                name: event.name,
+                label: event.label,
+                input: event.input,
+              });
+              break;
+            case "tool-result":
+              void this.post({
+                type: "chat/tool-result",
+                requestId,
+                callId: event.callId,
+                ok: event.ok,
+                summary: event.summary,
+                durationMs: event.durationMs,
+              });
+              break;
           }
         },
       );

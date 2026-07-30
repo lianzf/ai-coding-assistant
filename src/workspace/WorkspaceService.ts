@@ -53,6 +53,16 @@ const technologyDependencies: Readonly<Record<string, string>> = {
 };
 
 export class WorkspaceService {
+  public async listFiles(requestedLimit = 500): Promise<readonly string[]> {
+    this.requireTrustedWorkspace();
+    const limit = Math.min(Math.max(requestedLimit, 1), 1_000);
+    const files = await vscode.workspace.findFiles("**/*", defaultExclude, limit);
+    return files
+      .filter((uri) => !isSensitivePath(uri.path))
+      .map((uri) => vscode.workspace.asRelativePath(uri, false).replaceAll("\\", "/"))
+      .sort();
+  }
+
   public async analyzeProject(): Promise<ProjectOverview> {
     this.requireTrustedWorkspace();
     const folders = vscode.workspace.workspaceFolders;
