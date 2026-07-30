@@ -21,11 +21,12 @@ describe("ChatSessionStore", () => {
     const session = await store.ensure();
 
     await store.appendUser(session.id, "请分析当前项目的主要模块", "plan");
-    await store.appendAssistant(session.id, "request-1", "项目包含三个主要模块。");
+    await store.appendAssistant(session.id, "request-1", "项目包含三个主要模块。", "plan");
 
     const restored = store.get(session.id);
     expect(restored?.title).toBe("请分析当前项目的主要模块");
     expect(restored?.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(restored?.messages[1]?.mode).toBe("plan");
     expect(store.list()).toEqual([
       expect.objectContaining({
         id: session.id,

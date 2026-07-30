@@ -6,6 +6,7 @@ import type { FileChange } from "../domain/change.js";
 import { inboundMessageSchema, type InboundMessage } from "../protocol/messages.js";
 import type { ChatService } from "../chat/ChatService.js";
 import type { ChatSessionStore } from "../chat/ChatSessionStore.js";
+import { requireExecutablePlan } from "../chat/PlanConfirmation.js";
 import type { ChangeManager } from "../changes/ChangeManager.js";
 import type { OpenAICompatibleProvider } from "../providers/OpenAICompatibleProvider.js";
 import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
@@ -221,6 +222,40 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           message.includeWorkspace,
         );
         return;
+      case "chat/confirm-plan": {
+        const session = this.dependencies.sessions.get(message.sessionId);
+        const plan = requireExecutablePlan(session, message.planMessageId);
+        if (this.requests.size > 0) {
+          throw new Error("当前已有任务正在执行，请等待任务完成后再确认计划。");
+        }
+        const executionRequest = {
+          mode: "agent" as const,
+          text: [
+            "我已确认以下计划。请严格按该计划执行，并将所有文件修改提交到变更中心供我审核。",
+            "",
+            "<confirmed_plan>",
+            plan.text,
+            "</confirmed_plan>",
+          ].join("\n"),
+          includeActiveEditor: false,
+          includeWorkspace: false,
+          contextIds: [] as const,
+        };
+        if (!(await this.ensureChatPermissions(executionRequest))) {
+          return;
+        }
+        await this.beginChat(
+          message.requestId,
+          message.sessionId,
+          executionRequest.text,
+          executionRequest.mode,
+          message.providerId,
+          executionRequest.contextIds,
+          executionRequest.includeActiveEditor,
+          executionRequest.includeWorkspace,
+        );
+        return;
+      }
       case "chat/cancel":
         this.requests.get(message.requestId)?.abort();
         return;
@@ -393,7 +428,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           }
         },
       );
-      await this.dependencies.sessions.appendAssistant(sessionId, requestId, result.answer);
+      await this.dependencies.sessions.appendAssistant(sessionId, requestId, result.answer, mode);
       await this.post({
         type: "chat/complete",
         requestId,
@@ -403,7 +438,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       await this.postSessionState();
     } catch (error) {
       const message = controller.signal.aborted ? "生成已停止。" : this.errorMessage(error);
-      await this.dependencies.sessions.appendError(sessionId, requestId, message);
+      await this.dependencies.sessions.appendError(sessionId, requestId, message, mode);
       await this.post({
         type: "chat/error",
         requestId,
@@ -713,9 +748,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     return error instanceof Error ? error.message : String(error);
   }
 
-  private async ensureChatPermissions(
-    message: Extract<InboundMessage, { type: "chat/send" }>,
-  ): Promise<boolean> {
+  private async ensureChatPermissions(message: {
+    readonly mode: ChatMode;
+    readonly text: string;
+    readonly includeActiveEditor: boolean;
+    readonly includeWorkspace: boolean;
+    readonly contextIds?: readonly string[] | undefined;
+  }): Promise<boolean> {
     const requiresRead =
       message.mode !== "ask" ||
       message.includeActiveEditor ||

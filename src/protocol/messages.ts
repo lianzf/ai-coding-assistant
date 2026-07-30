@@ -79,6 +79,16 @@ const chatSendSchema = z
   })
   .strict();
 
+const chatConfirmPlanSchema = z
+  .object({
+    type: z.literal("chat/confirm-plan"),
+    requestId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    planMessageId: z.string().uuid(),
+    providerId: providerIdSchema.optional(),
+  })
+  .strict();
+
 const contextAddSchema = z
   .object({
     type: z.literal("context/add"),
@@ -176,6 +186,7 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   providerAssignSchema,
   permissionUpdateSchema,
   chatSendSchema,
+  chatConfirmPlanSchema,
   contextAddSchema,
   contextRemoveSchema,
   chatCancelSchema,

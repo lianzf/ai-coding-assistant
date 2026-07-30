@@ -156,6 +156,8 @@ function ChatView(): React.JSX.Element {
   const permissions = useAppStore((state) => state.permissions);
   const selectedProvider =
     providers.find((provider) => provider.id === providerAssignments[mode]) ?? providers[0];
+  const agentProvider =
+    providers.find((provider) => provider.id === providerAssignments.agent) ?? providers[0];
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -199,6 +201,28 @@ function ChatView(): React.JSX.Element {
     }
   };
 
+  const executePlan = (message: ChatItem): void => {
+    if (!activeSession || activeRequestId || message.mode !== "plan" || message.error) {
+      return;
+    }
+    vscode.postMessage({
+      type: "chat/confirm-plan",
+      requestId: crypto.randomUUID(),
+      sessionId: activeSession.id,
+      planMessageId: message.id,
+      ...(agentProvider ? { providerId: agentProvider.id } : {}),
+    });
+    setMode("agent");
+  };
+
+  const planExecutionDisabledReason = activeRequestId
+    ? "当前已有任务正在执行"
+    : !workspaceTrusted
+      ? "当前工作区未受信任"
+      : !agentProvider?.hasApiKey
+        ? "请先为执行模式配置可用模型和 API Key"
+        : undefined;
+
   const applyTemplate = (template: string, nextMode: ChatMode, workspace = false): void => {
     setText(template);
     setMode(nextMode);
@@ -223,7 +247,13 @@ function ChatView(): React.JSX.Element {
           <EmptyChat applyTemplate={applyTemplate} providerReady={Boolean(activeSession)} />
         )}
         {messages.map((message) => (
-          <MessageCard key={message.id} message={message} onReuse={() => reuse(message)} />
+          <MessageCard
+            key={message.id}
+            message={message}
+            onReuse={() => reuse(message)}
+            onExecutePlan={() => executePlan(message)}
+            executePlanDisabledReason={planExecutionDisabledReason}
+          />
         ))}
         <div ref={endRef} />
       </div>
@@ -374,7 +404,7 @@ function ChatView(): React.JSX.Element {
 function ExecutionTimeline(): React.JSX.Element | null {
   const status = useAppStore((state) => state.requestStatus);
   const steps = useAppStore((state) => state.executionSteps);
-  const running = useAppStore((state) => Boolean(state.activeRequestId));
+  const running = useAppStore((state) => Boolean(state.activeRequestId) || state.testRunning);
   const [expanded, setExpanded] = useState(true);
 
   if (!status && steps.length === 0) {
@@ -543,9 +573,13 @@ function EmptyChat({
 function MessageCard({
   message,
   onReuse,
+  onExecutePlan,
+  executePlanDisabledReason,
 }: {
   readonly message: ChatItem;
   readonly onReuse: () => void;
+  readonly onExecutePlan: () => void;
+  readonly executePlanDisabledReason?: string | undefined;
 }): React.JSX.Element {
   const copy = (): void => {
     void navigator.clipboard.writeText(message.text);
@@ -583,6 +617,24 @@ function MessageCard({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>
         </div>
       )}
+      {message.role === "assistant" &&
+        message.mode === "plan" &&
+        !message.pending &&
+        !message.error &&
+        Boolean(message.text) && (
+          <div className="message-followup-actions">
+            <button
+              type="button"
+              className="primary"
+              onClick={onExecutePlan}
+              disabled={Boolean(executePlanDisabledReason)}
+              title={executePlanDisabledReason ?? "确认该计划，并切换到执行模式"}
+            >
+              确认并执行计划
+            </button>
+            <span>执行产生的文件修改仍需在变更中心审核。</span>
+          </div>
+        )}
       {message.error && (
         <button
           type="button"
@@ -887,6 +939,8 @@ function ChangesView(): React.JSX.Element {
           {testRunning ? "测试运行中…" : "运行测试"}
         </button>
       </div>
+
+      <ExecutionTimeline />
 
       <div className="metric-grid">
         <Metric label="待审核" value={String(pendingCount)} />

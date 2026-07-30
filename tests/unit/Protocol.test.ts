@@ -17,6 +17,29 @@ describe("Webview protocol", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts only a verified plan confirmation shape", () => {
+    const valid = {
+      type: "chat/confirm-plan",
+      requestId: "4f9ee5da-1f69-4ed3-bf00-59c2c22094df",
+      sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+      planMessageId: "5c69fda2-a042-4b42-9e52-c6a49faf1ea8",
+      providerId: "provider-a",
+    };
+    expect(inboundMessageSchema.safeParse(valid).success).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        ...valid,
+        planText: "伪造的客户端计划内容",
+      }).success,
+    ).toBe(false);
+    expect(
+      inboundMessageSchema.safeParse({
+        ...valid,
+        planMessageId: "not-a-message-id",
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts provider configuration and an optional key in one message", () => {
     const result = inboundMessageSchema.safeParse({
       type: "provider/save",

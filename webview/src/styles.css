@@ -412,6 +412,21 @@ h3 {
   font-size: 0.76rem;
 }
 
+.message-followup-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.message-followup-actions span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .markdown-body {
   line-height: 1.58;
   overflow-wrap: anywhere;

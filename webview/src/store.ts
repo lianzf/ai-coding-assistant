@@ -308,6 +308,7 @@ export const useAppStore = create<AppState>((set) => ({
               text: "",
               pending: true,
               error: false,
+              ...(userMessage.mode ? { mode: userMessage.mode } : {}),
             },
           ],
         }));
@@ -440,14 +441,45 @@ export const useAppStore = create<AppState>((set) => ({
         }
         break;
       case "test/started":
-        set({ testRunning: true, testResult: undefined });
+        if (typeof message.command === "string") {
+          set((state) => ({
+            testRunning: true,
+            testResult: undefined,
+            requestStatus: "正在运行项目测试…",
+            executionSteps: [
+              ...state.executionSteps.filter((step) => step.id !== "local-test"),
+              {
+                id: "local-test",
+                name: "run_tests",
+                label: "运行项目测试",
+                input: message.command as string,
+                status: "running",
+                summary: "",
+              },
+            ],
+          }));
+        }
         break;
       case "test/result":
         if (isRecord(message.result)) {
-          set({
+          const result = message.result as unknown as NonNullable<AppState["testResult"]>;
+          const passed = result.exitCode === 0;
+          const summary = passed ? "测试通过" : `测试失败（退出码 ${result.exitCode ?? "未知"}）`;
+          set((state) => ({
             testRunning: false,
-            testResult: message.result as unknown as AppState["testResult"],
-          });
+            testResult: result,
+            requestStatus: summary,
+            executionSteps: state.executionSteps.map((step) =>
+              step.id === "local-test"
+                ? {
+                    ...step,
+                    status: passed ? ("completed" as const) : ("failed" as const),
+                    summary,
+                    durationMs: result.durationMs,
+                  }
+                : step,
+            ),
+          }));
         }
         break;
       case "project/analyzing":

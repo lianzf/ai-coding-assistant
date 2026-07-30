@@ -80,13 +80,19 @@ export class ChatSessionStore {
     return message;
   }
 
-  public async appendAssistant(id: string, requestId: string, text: string): Promise<void> {
+  public async appendAssistant(
+    id: string,
+    requestId: string,
+    text: string,
+    mode?: ChatMode,
+  ): Promise<void> {
     const createdAt = new Date().toISOString();
     const message: ConversationMessage = {
       id: requestId,
       role: "assistant",
       text: text.slice(0, maximumMessageCharacters),
       createdAt,
+      ...(mode ? { mode } : {}),
     };
     await this.replace(id, (session) => ({
       ...session,
@@ -95,7 +101,12 @@ export class ChatSessionStore {
     }));
   }
 
-  public async appendError(id: string, requestId: string, text: string): Promise<void> {
+  public async appendError(
+    id: string,
+    requestId: string,
+    text: string,
+    mode?: ChatMode,
+  ): Promise<void> {
     const createdAt = new Date().toISOString();
     const message: ConversationMessage = {
       id: requestId,
@@ -103,6 +114,7 @@ export class ChatSessionStore {
       text: text.slice(0, maximumMessageCharacters),
       createdAt,
       error: true,
+      ...(mode ? { mode } : {}),
     };
     await this.replace(id, (session) => ({
       ...session,
