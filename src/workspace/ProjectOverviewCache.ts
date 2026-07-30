@@ -17,6 +17,23 @@ const overviewSchema = z
     ),
     technologies: z.array(z.string()),
     modules: z.array(z.string()),
+    moduleDependencies: z.array(
+      z
+        .object({
+          source: z.string(),
+          target: z.string(),
+          references: z.number().int().positive(),
+          examples: z.array(z.string()).max(3),
+        })
+        .strict(),
+    ),
+    moduleAnalysis: z
+      .object({
+        analyzedFiles: z.number().int().nonnegative(),
+        skippedFiles: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+      })
+      .strict(),
     entryFiles: z.array(z.string()),
     configurationFiles: z.array(z.string()),
     scripts: z.record(z.string(), z.string()),
@@ -52,14 +69,14 @@ const overviewSchema = z
 
 const storedSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     rootKey: z.string().min(1),
     overview: overviewSchema,
   })
   .strict();
 
 export class ProjectOverviewCache {
-  private static readonly storageKey = "aiCodingAssistant.projectOverview.v1";
+  private static readonly storageKey = "aiCodingAssistant.projectOverview.v2";
 
   public constructor(private readonly state: ProjectCacheStatePort) {}
 
@@ -83,7 +100,7 @@ export class ProjectOverviewCache {
 
   public async save(rootKey: string, overview: ProjectOverview): Promise<void> {
     await this.state.update(ProjectOverviewCache.storageKey, {
-      version: 1,
+      version: 2,
       rootKey,
       overview: {
         ...overview,

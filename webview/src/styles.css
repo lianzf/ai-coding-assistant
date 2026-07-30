@@ -1003,6 +1003,59 @@ h3 {
   margin: 4px 0;
 }
 
+.path-list button,
+.module-dependency-examples button {
+  padding: 0;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.path-list button:hover,
+.module-dependency-examples button:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+
+.module-dependency-list {
+  display: grid;
+  gap: 7px;
+}
+
+.module-dependency-list > div {
+  padding: 8px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.module-dependency-flow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.module-dependency-flow small {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.module-dependency-examples {
+  display: flex;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.module-dependency-examples button {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .muted,
 .analyzed-at {
   color: var(--muted);

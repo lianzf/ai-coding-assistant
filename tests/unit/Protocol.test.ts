@@ -158,6 +158,21 @@ describe("Webview protocol", () => {
     ).toBe(false);
   });
 
+  it("accepts a bounded workspace file navigation request", () => {
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "workspace/open-file",
+        path: "src/index.ts",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "workspace/open-file",
+        path: "",
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts explicit checkpoint and batch review actions", () => {
     expect(inboundMessageSchema.safeParse({ type: "change/apply-all" }).success).toBe(true);
     expect(inboundMessageSchema.safeParse({ type: "change/reject-all" }).success).toBe(true);

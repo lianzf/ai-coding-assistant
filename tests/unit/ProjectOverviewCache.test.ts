@@ -27,6 +27,19 @@ function overview(validUntil: string): ProjectOverview {
     languages: [{ name: "TypeScript", count: 10 }],
     technologies: ["TypeScript"],
     modules: ["src"],
+    moduleDependencies: [
+      {
+        source: "tests",
+        target: "src",
+        references: 2,
+        examples: ["tests/example.test.ts"],
+      },
+    ],
+    moduleAnalysis: {
+      analyzedFiles: 10,
+      skippedFiles: 0,
+      truncated: false,
+    },
     entryFiles: ["src/index.ts"],
     configurationFiles: ["package.json"],
     scripts: { test: "vitest run" },
@@ -75,7 +88,7 @@ describe("ProjectOverviewCache", () => {
     await cache.save("file:///workspace", overview("2026-07-30T00:15:00.000Z"));
 
     expect(cache.get("file:///workspace", Date.parse("2026-07-30T00:15:00.000Z"))).toBeUndefined();
-    await state.update("aiCodingAssistant.projectOverview.v1", { version: 1 });
+    await state.update("aiCodingAssistant.projectOverview.v2", { version: 2 });
     expect(cache.get("file:///workspace")).toBeUndefined();
   });
 });

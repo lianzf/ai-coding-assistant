@@ -378,6 +378,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         }
         await this.search(message.query);
         return;
+      case "workspace/open-file":
+        if (!(await this.confirmPermission("read", `打开项目文件 ${message.path}`))) {
+          return;
+        }
+        await this.dependencies.workspace.openFile(message.path);
+        return;
       case "change/preview":
         if (!(await this.confirmPermission("read", "读取文件并打开变更 Diff"))) {
           return;

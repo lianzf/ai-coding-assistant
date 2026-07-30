@@ -80,6 +80,17 @@ export interface ProjectOverview {
   readonly languages: readonly { readonly name: string; readonly count: number }[];
   readonly technologies: readonly string[];
   readonly modules: readonly string[];
+  readonly moduleDependencies: readonly {
+    readonly source: string;
+    readonly target: string;
+    readonly references: number;
+    readonly examples: readonly string[];
+  }[];
+  readonly moduleAnalysis: {
+    readonly analyzedFiles: number;
+    readonly skippedFiles: number;
+    readonly truncated: boolean;
+  };
   readonly entryFiles: readonly string[];
   readonly configurationFiles: readonly string[];
   readonly scripts: Readonly<Record<string, string>>;

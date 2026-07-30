@@ -8,6 +8,7 @@ import {
   type ChatMode,
   type PermissionKind,
   type PermissionMode,
+  type ProjectOverview,
   type ProviderView,
 } from "./store";
 import { vscode } from "./vscode";
@@ -1028,6 +1029,9 @@ function ProjectView(): React.JSX.Element {
           <OverviewSection title="主要模块">
             <TagList values={overview.modules} empty="根目录暂无明显模块" />
           </OverviewSection>
+          <OverviewSection title="模块依赖关系">
+            <ModuleDependencyList overview={overview} />
+          </OverviewSection>
           <OverviewSection title="依赖摘要">
             <TagList values={overview.dependencies} empty="未识别到包依赖" />
           </OverviewSection>
@@ -1155,10 +1159,64 @@ function PathList({ values }: { readonly values: readonly string[] }): React.JSX
     <ul className="path-list">
       {values.map((value) => (
         <li key={value}>
-          <code>{value}</code>
+          <button
+            type="button"
+            title={`在编辑器中打开 ${value}`}
+            onClick={() => vscode.postMessage({ type: "workspace/open-file", path: value })}
+          >
+            <code>{value}</code>
+          </button>
         </li>
       ))}
     </ul>
+  );
+}
+
+function ModuleDependencyList({
+  overview,
+}: {
+  readonly overview: ProjectOverview;
+}): React.JSX.Element {
+  if (overview.moduleDependencies.length === 0) {
+    return (
+      <p className="muted">
+        在已分析的 {overview.moduleAnalysis.analyzedFiles} 个安全文本文件中暂未识别到跨模块引用。
+      </p>
+    );
+  }
+  return (
+    <>
+      <div className="module-dependency-list">
+        {overview.moduleDependencies.map((dependency) => (
+          <div key={`${dependency.source}:${dependency.target}`}>
+            <div className="module-dependency-flow">
+              <strong>{dependency.source}</strong>
+              <span aria-hidden="true">→</span>
+              <strong>{dependency.target}</strong>
+              <small>{dependency.references} 处证据</small>
+            </div>
+            <div className="module-dependency-examples">
+              {dependency.examples.map((path) => (
+                <button
+                  type="button"
+                  key={path}
+                  onClick={() => vscode.postMessage({ type: "workspace/open-file", path })}
+                  title={`打开引用文件 ${path}`}
+                >
+                  {path}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="analyzed-at">
+        已分析 {overview.moduleAnalysis.analyzedFiles} 个文件
+        {overview.moduleAnalysis.skippedFiles > 0
+          ? ` · 跳过 ${overview.moduleAnalysis.skippedFiles} 个文件`
+          : ""}
+      </p>
+    </>
   );
 }
 

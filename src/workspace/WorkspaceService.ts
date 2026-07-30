@@ -11,6 +11,11 @@ import { isSensitivePath } from "../security/PathPolicy.js";
 import { sanitizeGitDiff } from "../security/ContentRedactor.js";
 import type { ProjectOverviewCache } from "./ProjectOverviewCache.js";
 import { insertTextRange } from "./EditorInsertion.js";
+import {
+  analyzeModuleDependencies,
+  isModuleAnalysisFile,
+  type ModuleSourceFile,
+} from "./ModuleDependencyAnalyzer.js";
 
 interface GitExtension {
   readonly enabled: boolean;
@@ -238,6 +243,42 @@ export class WorkspaceService implements vscode.Disposable {
     }
 
     const truncated = discovered.length >= maximumFiles;
+    const moduleCandidates = files
+      .map((uri) => ({
+        uri,
+        path: vscode.workspace.asRelativePath(uri, false).replaceAll("\\", "/"),
+      }))
+      .filter((file) => isModuleAnalysisFile(file.path))
+      .sort((left, right) => {
+        const leftManifest = left.path.endsWith("package.json") ? 0 : 1;
+        const rightManifest = right.path.endsWith("package.json") ? 0 : 1;
+        return leftManifest - rightManifest || left.path.localeCompare(right.path);
+      });
+    const moduleSources: ModuleSourceFile[] = [];
+    const maximumModuleFiles = 400;
+    const maximumModuleCharacters = 8_000_000;
+    let moduleCharacters = 0;
+    for (const candidate of moduleCandidates.slice(0, maximumModuleFiles)) {
+      try {
+        const content = await this.readText(candidate.uri, 256_000);
+        if (moduleCharacters + content.length > maximumModuleCharacters) {
+          break;
+        }
+        moduleSources.push({ path: candidate.path, content });
+        moduleCharacters += content.length;
+      } catch {
+        // Binary, oversized and unreadable files are counted as skipped below.
+      }
+    }
+    const moduleDependencies = analyzeModuleDependencies(moduleSources).dependencies;
+    const moduleAnalysis = {
+      analyzedFiles: moduleSources.length,
+      skippedFiles: Math.max(0, moduleCandidates.length - moduleSources.length),
+      truncated:
+        truncated ||
+        moduleSources.length < moduleCandidates.length ||
+        moduleCharacters >= maximumModuleCharacters,
+    };
     const gitStatus = await this.projectGitStatus();
     const sensitiveFileCount = discovered.filter((uri) => isSensitivePath(uri.path)).length;
     const risks = this.projectRisks({
@@ -264,6 +305,8 @@ export class WorkspaceService implements vscode.Disposable {
         .slice(0, 12),
       technologies: [...technologies].sort(),
       modules: [...modules].sort().slice(0, 30),
+      moduleDependencies,
+      moduleAnalysis,
       entryFiles: entryFiles.slice(0, 20),
       configurationFiles: configurationFiles.slice(0, 30),
       scripts,
@@ -280,7 +323,14 @@ export class WorkspaceService implements vscode.Disposable {
         maximumFiles,
         validUntil: new Date(Date.now() + 15 * 60_000).toISOString(),
       },
-      warnings: truncated ? [`项目文件数量达到索引上限 ${maximumFiles}，当前概览可能不完整。`] : [],
+      warnings: [
+        ...(truncated ? [`项目文件数量达到索引上限 ${maximumFiles}，当前概览可能不完整。`] : []),
+        ...(moduleAnalysis.truncated
+          ? [
+              `模块依赖分析已限制在 ${moduleAnalysis.analyzedFiles} 个安全文本文件，关系图可能不完整。`,
+            ]
+          : []),
+      ],
       truncated,
       analyzedAt: new Date().toISOString(),
     };
@@ -462,6 +512,13 @@ export class WorkspaceService implements vscode.Disposable {
       throw new Error("不读取二进制文件。");
     }
     return textDecoder.decode(bytes);
+  }
+
+  public async openFile(path: string): Promise<void> {
+    this.requireTrustedWorkspace();
+    const uri = this.resolveRelativePath(path);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: true });
   }
 
   public resolveRelativePath(input: string): vscode.Uri {

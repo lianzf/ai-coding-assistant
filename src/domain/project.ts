@@ -1,3 +1,10 @@
+export interface ModuleDependency {
+  readonly source: string;
+  readonly target: string;
+  readonly references: number;
+  readonly examples: readonly string[];
+}
+
 export interface ProjectOverview {
   readonly workspaceName: string;
   readonly roots: readonly string[];
@@ -9,6 +16,12 @@ export interface ProjectOverview {
   }[];
   readonly technologies: readonly string[];
   readonly modules: readonly string[];
+  readonly moduleDependencies: readonly ModuleDependency[];
+  readonly moduleAnalysis: {
+    readonly analyzedFiles: number;
+    readonly skippedFiles: number;
+    readonly truncated: boolean;
+  };
   readonly entryFiles: readonly string[];
   readonly configurationFiles: readonly string[];
   readonly scripts: Readonly<Record<string, string>>;

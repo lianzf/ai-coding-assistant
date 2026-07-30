@@ -181,6 +181,13 @@ const searchSchema = z
   })
   .strict();
 
+const openWorkspaceFileSchema = z
+  .object({
+    type: z.literal("workspace/open-file"),
+    path: z.string().trim().min(1).max(1_000),
+  })
+  .strict();
+
 const changeActionSchema = z
   .object({
     type: z.enum(["change/preview", "change/apply", "change/reject", "change/rollback"]),
@@ -247,6 +254,7 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   sessionRenameSchema,
   sessionLifecycleSchema,
   searchSchema,
+  openWorkspaceFileSchema,
   changeActionSchema,
   changeBatchActionSchema,
   runTestsSchema,
