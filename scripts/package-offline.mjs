@@ -10,11 +10,9 @@ const fileName = `${packageJson.name}-${packageJson.version}.vsix`;
 const output = resolve(artifacts, fileName);
 
 await mkdir(artifacts, { recursive: true });
-const pnpmCli = process.env.npm_execpath;
-const command = pnpmCli ? process.execPath : "pnpm";
-const vsceArgs = [
-  "exec",
-  "vsce",
+const vsceCli = resolve(root, "node_modules", "@vscode", "vsce", "vsce");
+const commandArgs = [
+  vsceCli,
   "package",
   "--no-dependencies",
   "--allow-missing-repository",
@@ -22,8 +20,7 @@ const vsceArgs = [
   "--out",
   output,
 ];
-const commandArgs = pnpmCli ? [pnpmCli, ...vsceArgs] : vsceArgs;
-const result = spawnSync(command, commandArgs, {
+const result = spawnSync(process.execPath, commandArgs, {
   cwd: root,
   stdio: "inherit",
   shell: false,

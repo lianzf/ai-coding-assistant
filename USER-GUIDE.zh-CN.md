@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.3.x`。
+本文档适用于 AI Coding Assistant `0.4.x`。
 
 插件标识：
 
@@ -12,7 +12,7 @@ local-project.ai-coding-assistant
 
 AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功能包括：
 
-- 配置用户自备的 OpenAI Compatible 模型；
+- 配置多个用户自备的 OpenAI Compatible 模型并按工作模式路由；
 - 使用 VS Code SecretStorage 保存 API Key；
 - 流式 AI 对话；
 - 读取当前文件、选区和工作区代码；
@@ -49,9 +49,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.3.0.vsix
-ai-coding-assistant-0.3.0.vsix.sha256
-ai-coding-assistant-0.3.0.metadata.json
+ai-coding-assistant-0.4.0.vsix
+ai-coding-assistant-0.4.0.vsix.sha256
+ai-coding-assistant-0.4.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -59,15 +59,15 @@ ai-coding-assistant-0.3.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.3.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.3.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.4.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.4.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.3.0.vsix
-cat ai-coding-assistant-0.3.0.vsix.sha256
+sha256sum ai-coding-assistant-0.4.0.vsix
+cat ai-coding-assistant-0.4.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -80,13 +80,13 @@ cat ai-coding-assistant-0.3.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.3.0.vsix`。
+5. 选择 `ai-coding-assistant-0.4.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.3.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.4.0.vsix --force
 ```
 
 检查安装结果：
@@ -99,13 +99,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.3.0
+local-project.ai-coding-assistant@0.4.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.3.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.4.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -122,13 +122,15 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 
 升级后必须重新加载 VS Code 窗口。
 
+从 `0.3.x` 升级到 `0.4.x` 时，原有 `default` 模型配置和 API Key 会继续使用，无需重新录入。升级后可以再添加其他模型并配置模式路由。
+
 ### 4.5 卸载
 
 ```bash
 code --uninstall-extension local-project.ai-coding-assistant
 ```
 
-如果需要同时清理已保存的 API Key，请先在“设置”中点击“移除密钥”，再卸载插件。
+如果需要同时清理已保存的 API Key，请先在“设置”中逐个模型点击“移除密钥”或“删除配置”，再卸载插件。
 
 ## 5. 首次启动
 
@@ -177,14 +179,15 @@ Model ID：deepseek-v4-pro
 
 不要把 Anthropic 格式地址 `https://api.deepseek.com/anthropic` 用于本插件。
 
-### 6.3 保存配置
+### 6.3 保存一个模型配置
 
-1. 填写模型配置。
-2. 第一次配置时输入 API Key。
-3. 点击“保存”。
-4. 确认页面显示“密钥状态：已安全配置”。
-5. 再点击“测试连接”。
-6. 出现“连接成功”后即可开始对话。
+1. 点击“新增”或选择已有模型。
+2. 填写模型配置。
+3. 第一次配置时输入 API Key。
+4. 点击“保存配置”。
+5. 确认页面显示“密钥状态：已安全配置”。
+6. 再点击“测试连接”。
+7. 出现“连接成功”后即可开始对话。
 
 保存成功后，API Key 输入框会显示：
 
@@ -194,9 +197,20 @@ Model ID：deepseek-v4-pro
 
 以后只修改 Base URL 或 Model ID 时，不需要重新输入 API Key。
 
-### 6.4 SecretStorage 说明
+### 6.4 多模型与模式路由
 
-- API Key 不写入 `settings.json`；
+- 点击“新增”可以保存最多 50 个模型配置；
+- 每个模型使用独立 API Key，删除一个模型不会影响其他模型；
+- 在“默认模型分配”中可分别为“问答、规划、执行”选择默认模型；
+- 聊天输入区的“模型”下拉框可以即时切换当前工作模式使用的模型；
+- 输入区切换模型时，会同步更新该工作模式的默认分配；
+- 缺少 API Key 的模型会显示提示，并禁用发送按钮。
+
+例如，可以让“问答”使用速度较快的模型，“规划”使用长上下文模型，“执行”使用代码能力更强的模型。
+
+### 6.5 SecretStorage 说明
+
+- 各模型的 API Key 不写入 `settings.json`；
 - API Key 不写入工作区文件；
 - API Key 不保存到普通全局状态；
 - Webview 只会收到“是否已经配置密钥”的布尔状态；
@@ -217,9 +231,10 @@ Model ID：deepseek-v4-pro
 ### 7.2 发送消息
 
 1. 在输入框上方选择“问答、规划、执行”。
-2. 根据需要启用“当前文件/选区”或“项目结构”上下文标签。
-3. 输入问题或任务。
-4. 按 `Enter` 或点击“发送”；`Shift+Enter` 用于换行。
+2. 在“模型”下拉框确认或切换本次请求使用的模型。
+3. 根据需要启用“当前文件/选区”或“项目结构”上下文标签。
+4. 输入问题或任务。
+5. 按 `Enter` 或点击“发送”；`Shift+Enter` 用于换行。
 
 模型响应会以流式 Markdown 逐步显示。代码块、表格和列表会格式化显示；消息支持复制和再次使用。生成过程中可以点击“停止生成”取消当前请求。
 
@@ -499,14 +514,15 @@ AI Coding Assistant：运行单元测试
 
 ### 15.1 提示“请先保存 OpenAI Compatible 配置”
 
-打开“设置”，填写配置名称、Base URL、Model ID 和超时，点击“保存配置”。
+打开“设置”，点击“新增”，填写配置名称、Base URL、Model ID 和超时，点击“保存配置”。
 
 ### 15.2 API Key 已保存，但状态显示未配置
 
 1. 执行 **Developer: Reload Window**；
-2. 重新点击一次“保存”；
-3. API Key 已存在时可以留空；
-4. 确认状态变为“已安全配置”。
+2. 在左侧模型列表中确认选中了正确模型；
+3. 重新点击一次“保存配置”；
+4. API Key 已存在时可以留空；
+5. 确认状态变为“已安全配置”。
 
 ### 15.3 测试连接失败
 
@@ -586,6 +602,9 @@ AI Coding Assistant：运行单元测试
 - [ ] AI Coding Assistant 图标正常显示；
 - [ ] 工作区信任状态正确；
 - [ ] 模型配置可以保存；
+- [ ] 可以添加第二个模型并独立保存密钥；
+- [ ] 问答、规划、执行可以分配不同默认模型；
+- [ ] 输入区可以快速切换当前模型；
 - [ ] 密钥状态显示“已安全配置”；
 - [ ] 测试连接成功；
 - [ ] 流式对话可以正常返回；

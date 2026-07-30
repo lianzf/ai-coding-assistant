@@ -1,10 +1,11 @@
 # AI Coding Assistant
 
-AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.3 版本提供三种清晰工作模式、持久化多轮会话、项目工具调用、本地项目概览、Agent 执行时间线、任务检查点、安全回滚和受控测试执行。
+AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.4 版本提供多模型独立配置、按工作模式路由、持久化多轮会话、项目工具调用、本地项目概览、Agent 执行时间线、任务检查点、安全回滚和受控测试执行。
 
 ## 主要能力
 
 - **问答、规划、执行三模式**：只读咨询、只读方案和可审核修改边界明确。
+- **多模型路由**：保存多个兼容模型，为问答、规划、执行分别分配默认模型，也可在输入区即时切换。
 - **多轮会话**：按工作区保存历史对话，支持新建、切换、重命名和删除。
 - **项目概览**：本地识别语言、技术栈、模块、入口、配置、脚本和测试文件。
 - **项目工具调用**：规划/执行模式可安全列出、搜索和读取工作区内容，最多执行六轮。
@@ -30,7 +31,7 @@ AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS
 要求 VS Code 1.96 或更高版本。
 
 ```powershell
-code --install-extension .\artifacts\ai-coding-assistant-0.3.0.vsix --force
+code --install-extension .\artifacts\ai-coding-assistant-0.4.0.vsix --force
 ```
 
 离线和银河麒麟说明见 [OFFLINE-INSTALL.zh-CN.md](OFFLINE-INSTALL.zh-CN.md)，完整操作说明见 [USER-GUIDE.zh-CN.md](USER-GUIDE.zh-CN.md)。
@@ -39,8 +40,9 @@ code --install-extension .\artifacts\ai-coding-assistant-0.3.0.vsix --force
 
 1. 打开 Activity Bar 中的 **AI Coding Assistant**。
 2. 展开默认折叠的 **设置**，或点击对话页右上角模型/齿轮按钮。
-3. 输入 OpenAI Compatible Base URL、Model ID 和 API Key。
-4. 点击“保存配置”，再点击“测试连接”。
+3. 点击“新增”，输入 OpenAI Compatible Base URL、Model ID 和该模型独立的 API Key。
+4. 点击“保存配置”，再点击“测试连接”；可重复添加其他模型。
+5. 在“默认模型分配”中分别选择问答、规划、执行使用的模型。
 
 插件调用：
 

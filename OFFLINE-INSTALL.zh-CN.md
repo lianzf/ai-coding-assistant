@@ -17,13 +17,13 @@ VSIX 已包含 React Webview、Extension Host 代码、样式和图标，运行�
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.3.0.vsix -Algorithm SHA256
+Get-FileHash .\ai-coding-assistant-0.4.0.vsix -Algorithm SHA256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.3.0.vsix
+sha256sum ai-coding-assistant-0.4.0.vsix
 ```
 
 结果必须与 `.sha256` 文件一致。
@@ -31,7 +31,7 @@ sha256sum ai-coding-assistant-0.3.0.vsix
 ## 安装与升级
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.3.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.4.0.vsix --force
 ```
 
 也可以在 VS Code 的 Extensions 视图中选择“从 VSIX 安装”。
@@ -43,7 +43,7 @@ code --uninstall-extension local-project.ai-coding-assistant
 code --install-extension ./ai-coding-assistant-previous.vsix --force
 ```
 
-卸载扩展不会把 API Key 写到普通文件；密钥由 VS Code SecretStorage 管理。
+升级会自动保留旧版 `default` 模型配置和密钥。卸载扩展不会把 API Key 写到普通文件；各模型密钥由 VS Code SecretStorage 分别管理。
 
 ## 银河麒麟兼容说明
 
