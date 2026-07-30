@@ -286,6 +286,7 @@ export const useAppStore = create<AppState>((set) => ({
         const requestId = message.requestId;
         const userMessage = message.userMessage as unknown as ConversationMessage;
         set((state) => ({
+          navigation: "chat",
           activeRequestId: requestId,
           requestStatus: "正在准备任务…",
           executionSteps: [],

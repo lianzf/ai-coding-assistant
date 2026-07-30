@@ -43,6 +43,14 @@ describe("Webview protocol", () => {
   it("accepts bounded regeneration and code proposal actions", () => {
     expect(
       inboundMessageSchema.safeParse({
+        type: "chat/validate-applied",
+        requestId: "4f9ee5da-1f69-4ed3-bf00-59c2c22094df",
+        sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+        providerId: "provider-a",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
         type: "chat/regenerate",
         requestId: "4f9ee5da-1f69-4ed3-bf00-59c2c22094df",
         sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",

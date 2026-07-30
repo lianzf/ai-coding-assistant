@@ -289,6 +289,41 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         );
         return;
       }
+      case "chat/validate-applied": {
+        if (this.requests.size > 0) {
+          throw new Error("当前已有任务正在执行，请等待任务完成后再验证变更。");
+        }
+        const checkpoint = this.dependencies.changes.latestAppliedGroup();
+        if (checkpoint.length === 0) {
+          throw new Error("当前没有已经应用且可验证的任务检查点。");
+        }
+        const validationRequest = {
+          mode: "agent" as const,
+          text: [
+            "用户已经审核并应用最近任务检查点。请验证当前工作区中的真实修改结果。",
+            "必须调用 run_project_tests 请求运行项目测试；如果用户拒绝或测试失败，请如实说明，不得声称验证通过。",
+            "本次已应用文件：",
+            ...checkpoint.slice(0, 50).map((change) => `- ${change.path}`),
+          ].join("\n"),
+          includeActiveEditor: false,
+          includeWorkspace: false,
+          contextIds: [] as const,
+        };
+        if (!(await this.ensureChatPermissions(validationRequest))) {
+          return;
+        }
+        await this.beginChat(
+          message.requestId,
+          message.sessionId,
+          validationRequest.text,
+          validationRequest.mode,
+          message.providerId,
+          validationRequest.contextIds,
+          validationRequest.includeActiveEditor,
+          validationRequest.includeWorkspace,
+        );
+        return;
+      }
       case "code/propose-insert": {
         if (!(await this.confirmPermission("read", "读取当前文件并生成代码片段候选变更"))) {
           return;

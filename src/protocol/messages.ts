@@ -101,6 +101,15 @@ const chatRegenerateSchema = z
   })
   .strict();
 
+const chatValidateAppliedSchema = z
+  .object({
+    type: z.literal("chat/validate-applied"),
+    requestId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    providerId: providerIdSchema.optional(),
+  })
+  .strict();
+
 const codeProposeInsertSchema = z
   .object({
     type: z.literal("code/propose-insert"),
@@ -208,6 +217,7 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   chatSendSchema,
   chatConfirmPlanSchema,
   chatRegenerateSchema,
+  chatValidateAppliedSchema,
   codeProposeInsertSchema,
   contextAddSchema,
   contextRemoveSchema,

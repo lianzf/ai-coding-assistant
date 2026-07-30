@@ -1064,6 +1064,13 @@ function ChangesView(): React.JSX.Element {
   const changes = useAppStore((state) => state.changes);
   const testResult = useAppStore((state) => state.testResult);
   const testRunning = useAppStore((state) => state.testRunning);
+  const activeRequestId = useAppStore((state) => state.activeRequestId);
+  const activeSession = useAppStore((state) => state.activeSession);
+  const providers = useAppStore((state) => state.providers);
+  const providerAssignments = useAppStore((state) => state.providerAssignments);
+  const workspaceTrusted = useAppStore((state) => state.workspaceTrusted);
+  const agentProvider =
+    providers.find((provider) => provider.id === providerAssignments.agent) ?? providers[0];
   const visibleChanges = useMemo(
     () => changes.filter((change) => change.status !== "rejected"),
     [changes],
@@ -1072,6 +1079,17 @@ function ChangesView(): React.JSX.Element {
   const appliedCount = visibleChanges.filter((change) => change.status === "applied").length;
   const addedLines = visibleChanges.reduce((total, change) => total + change.addedLines, 0);
   const deletedLines = visibleChanges.reduce((total, change) => total + change.deletedLines, 0);
+  const validateApplied = (): void => {
+    if (!activeSession || activeRequestId || appliedCount === 0) {
+      return;
+    }
+    vscode.postMessage({
+      type: "chat/validate-applied",
+      requestId: crypto.randomUUID(),
+      sessionId: activeSession.id,
+      ...(agentProvider ? { providerId: agentProvider.id } : {}),
+    });
+  };
 
   return (
     <section className="content-view">
@@ -1080,13 +1098,36 @@ function ChangesView(): React.JSX.Element {
           <h2>变更审核</h2>
           <p>AI 生成的修改只有经过 Diff 审核和明确批准后才会写入工作区。</p>
         </div>
-        <button
-          type="button"
-          onClick={() => vscode.postMessage({ type: "test/run" })}
-          disabled={testRunning}
-        >
-          {testRunning ? "测试运行中…" : "运行测试"}
-        </button>
+        <div className="header-actions">
+          <button
+            type="button"
+            onClick={() => vscode.postMessage({ type: "test/run" })}
+            disabled={testRunning}
+          >
+            {testRunning ? "测试运行中…" : "运行测试"}
+          </button>
+          <button
+            type="button"
+            className="primary"
+            onClick={validateApplied}
+            disabled={
+              appliedCount === 0 ||
+              Boolean(activeRequestId) ||
+              !activeSession ||
+              !workspaceTrusted ||
+              !agentProvider?.hasApiKey
+            }
+            title={
+              appliedCount === 0
+                ? "请先审核并应用一组修改"
+                : agentProvider?.hasApiKey
+                  ? "启动执行回合并逐次审批测试命令"
+                  : "请先为执行模式配置模型和 API Key"
+            }
+          >
+            Agent 验证变更
+          </button>
+        </div>
       </div>
 
       <ExecutionTimeline />

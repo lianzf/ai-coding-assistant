@@ -428,7 +428,8 @@ export class ChatService {
         "如需提出文件修改，只能在回答末尾提供一个 ```ai-change-set 代码块。",
         '其 JSON 格式必须为 {"changes":[{"path":"工作区相对路径","operation":"create|update","content":"完整文件内容","reason":"原因"}]}。',
         "禁止使用 delete 或 rename。修改不会自动应用，必须由用户审核 Diff 并明确批准。",
-        "如需验证修改，可以调用 run_project_tests；每次实际运行前仍必须由用户在 Extension Host 中批准。",
+        "可以调用 run_project_tests 验证当前工作区状态；每次实际运行前仍必须由用户在 Extension Host 中批准。",
+        "候选 ChangeSet 尚未由用户应用时，测试针对的是原始工作区，不得声称已经验证候选修改。",
         "先简要说明执行计划，再给出结果和验证建议。",
       );
     }
