@@ -89,6 +89,26 @@ const chatConfirmPlanSchema = z
   })
   .strict();
 
+const chatRegenerateSchema = z
+  .object({
+    type: z.literal("chat/regenerate"),
+    requestId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    assistantMessageId: z.string().uuid(),
+    providerId: providerIdSchema.optional(),
+    includeActiveEditor: z.boolean(),
+    includeWorkspace: z.boolean(),
+  })
+  .strict();
+
+const codeProposeInsertSchema = z
+  .object({
+    type: z.literal("code/propose-insert"),
+    code: z.string().min(1).max(200_000),
+    language: z.string().trim().min(1).max(50).optional(),
+  })
+  .strict();
+
 const contextAddSchema = z
   .object({
     type: z.literal("context/add"),
@@ -187,6 +207,8 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   permissionUpdateSchema,
   chatSendSchema,
   chatConfirmPlanSchema,
+  chatRegenerateSchema,
+  codeProposeInsertSchema,
   contextAddSchema,
   contextRemoveSchema,
   chatCancelSchema,

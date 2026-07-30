@@ -11,6 +11,7 @@ import {
   type ProviderView,
 } from "./store";
 import { vscode } from "./vscode";
+import { tokenizeCode } from "./codeHighlighter";
 
 const modes: readonly {
   value: ChatMode;
@@ -158,6 +159,9 @@ function ChatView(): React.JSX.Element {
     providers.find((provider) => provider.id === providerAssignments[mode]) ?? providers[0];
   const agentProvider =
     providers.find((provider) => provider.id === providerAssignments.agent) ?? providers[0];
+  const latestAssistantId = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && !message.pending)?.id;
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -215,6 +219,38 @@ function ChatView(): React.JSX.Element {
     setMode("agent");
   };
 
+  const regenerate = (message: ChatItem): void => {
+    if (!activeSession || activeRequestId || message.role !== "assistant") {
+      return;
+    }
+    const retryMode = message.mode ?? "ask";
+    const retryProvider =
+      providers.find((provider) => provider.id === providerAssignments[retryMode]) ?? providers[0];
+    vscode.postMessage({
+      type: "chat/regenerate",
+      requestId: crypto.randomUUID(),
+      sessionId: activeSession.id,
+      assistantMessageId: message.id,
+      ...(retryProvider ? { providerId: retryProvider.id } : {}),
+      includeActiveEditor,
+      includeWorkspace,
+    });
+    setMode(retryMode);
+  };
+
+  const regenerationDisabledReason = (message: ChatItem): string | undefined => {
+    const retryMode = message.mode ?? "ask";
+    const retryProvider =
+      providers.find((provider) => provider.id === providerAssignments[retryMode]) ?? providers[0];
+    return activeRequestId
+      ? "当前已有任务正在执行"
+      : !workspaceTrusted
+        ? "当前工作区未受信任"
+        : !retryProvider?.hasApiKey
+          ? "请先为该模式配置可用模型和 API Key"
+          : undefined;
+  };
+
   const planExecutionDisabledReason = activeRequestId
     ? "当前已有任务正在执行"
     : !workspaceTrusted
@@ -253,6 +289,9 @@ function ChatView(): React.JSX.Element {
             onReuse={() => reuse(message)}
             onExecutePlan={() => executePlan(message)}
             executePlanDisabledReason={planExecutionDisabledReason}
+            onRegenerate={() => regenerate(message)}
+            showRegenerate={message.id === latestAssistantId}
+            regenerateDisabledReason={regenerationDisabledReason(message)}
           />
         ))}
         <div ref={endRef} />
@@ -575,11 +614,17 @@ function MessageCard({
   onReuse,
   onExecutePlan,
   executePlanDisabledReason,
+  onRegenerate,
+  showRegenerate,
+  regenerateDisabledReason,
 }: {
   readonly message: ChatItem;
   readonly onReuse: () => void;
   readonly onExecutePlan: () => void;
   readonly executePlanDisabledReason?: string | undefined;
+  readonly onRegenerate: () => void;
+  readonly showRegenerate: boolean;
+  readonly regenerateDisabledReason?: string | undefined;
 }): React.JSX.Element {
   const copy = (): void => {
     void navigator.clipboard.writeText(message.text);
@@ -600,6 +645,16 @@ function MessageCard({
               再次使用
             </button>
           )}
+          {message.role === "assistant" && showRegenerate && !message.pending && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              disabled={Boolean(regenerateDisabledReason)}
+              title={regenerateDisabledReason ?? "使用当前上下文重新生成最近一条回复"}
+            >
+              重新生成
+            </button>
+          )}
           <button type="button" onClick={copy} disabled={!message.text}>
             复制
           </button>
@@ -614,7 +669,29 @@ function MessageCard({
         </div>
       ) : (
         <div className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              pre: ({ children }) => <>{children}</>,
+              code: ({ children, className }) => {
+                const raw = markdownCodeText(children);
+                const block = Boolean(className?.startsWith("language-") || raw.includes("\n"));
+                if (!block) {
+                  return <code className={className}>{children}</code>;
+                }
+                const language = className?.replace(/^language-/, "") ?? "";
+                return (
+                  <CodeBlock
+                    code={raw.replace(/\n$/, "")}
+                    language={language}
+                    allowPropose={message.role === "assistant"}
+                  />
+                );
+              },
+            }}
+          >
+            {message.text}
+          </ReactMarkdown>
         </div>
       )}
       {message.role === "assistant" &&
@@ -645,6 +722,78 @@ function MessageCard({
         </button>
       )}
     </article>
+  );
+}
+
+function markdownCodeText(value: React.ReactNode): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(markdownCodeText).join("");
+  }
+  return "";
+}
+
+function CodeBlock({
+  code,
+  language,
+  allowPropose,
+}: {
+  readonly code: string;
+  readonly language: string;
+  readonly allowPropose: boolean;
+}): React.JSX.Element {
+  const workspaceTrusted = useAppStore((state) => state.workspaceTrusted);
+  const tokens = useMemo(() => tokenizeCode(code), [code]);
+  const copy = (): void => {
+    void navigator.clipboard.writeText(code);
+  };
+  const propose = (): void => {
+    vscode.postMessage({
+      type: "code/propose-insert",
+      code,
+      ...(language ? { language } : {}),
+    });
+  };
+
+  return (
+    <div className="code-block">
+      <div className="code-block-header">
+        <span>{language || "代码"}</span>
+        <div>
+          <button type="button" onClick={copy}>
+            复制
+          </button>
+          {allowPropose && (
+            <button
+              type="button"
+              onClick={propose}
+              disabled={!workspaceTrusted || !code}
+              title={
+                workspaceTrusted
+                  ? "替换当前选区或在光标处插入，并送到变更中心审核"
+                  : "当前工作区未受信任"
+              }
+            >
+              送入变更中心
+            </button>
+          )}
+        </div>
+      </div>
+      <pre>
+        <code>
+          {tokens.map((token, index) => (
+            <span className={`code-token ${token.kind}`} key={`${index}-${token.value.length}`}>
+              {token.value}
+            </span>
+          ))}
+        </code>
+      </pre>
+    </div>
   );
 }
 

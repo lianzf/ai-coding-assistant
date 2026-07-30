@@ -430,6 +430,17 @@ export const useAppStore = create<AppState>((set) => ({
             : [],
         });
         break;
+      case "code/proposed":
+        if (typeof message.path === "string") {
+          set({
+            navigation: "changes",
+            notice: {
+              level: "info",
+              message: `已将代码片段作为 ${message.path} 的候选修改送入变更中心。`,
+            },
+          });
+        }
+        break;
       case "provider/test-result":
         if (isRecord(message.result) && typeof message.result.message === "string") {
           set({

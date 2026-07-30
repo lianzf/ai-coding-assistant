@@ -40,6 +40,33 @@ describe("Webview protocol", () => {
     ).toBe(false);
   });
 
+  it("accepts bounded regeneration and code proposal actions", () => {
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "chat/regenerate",
+        requestId: "4f9ee5da-1f69-4ed3-bf00-59c2c22094df",
+        sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+        assistantMessageId: "5c69fda2-a042-4b42-9e52-c6a49faf1ea8",
+        providerId: "provider-a",
+        includeActiveEditor: true,
+        includeWorkspace: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "code/propose-insert",
+        code: "const value = 1;",
+        language: "typescript",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "code/propose-insert",
+        code: "x".repeat(200_001),
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts provider configuration and an optional key in one message", () => {
     const result = inboundMessageSchema.safeParse({
       type: "provider/save",

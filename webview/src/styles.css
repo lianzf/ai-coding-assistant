@@ -478,6 +478,64 @@ h3 {
   white-space: pre;
 }
 
+.code-block {
+  margin: 0 0 10px;
+  overflow: hidden;
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 3px 8px;
+  color: var(--muted);
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+
+.code-block-header > div {
+  display: flex;
+  gap: 4px;
+}
+
+.code-block-header button {
+  min-height: 23px;
+  padding: 2px 7px;
+  border: 0;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  font-size: 0.75rem;
+}
+
+.code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.code-token.comment {
+  color: var(--vscode-symbolIcon-textForeground);
+  opacity: 0.78;
+}
+
+.code-token.string {
+  color: var(--vscode-symbolIcon-stringForeground);
+}
+
+.code-token.number {
+  color: var(--vscode-symbolIcon-numberForeground);
+}
+
+.code-token.keyword {
+  color: var(--vscode-symbolIcon-keywordForeground);
+  font-weight: 600;
+}
+
 .markdown-body table {
   width: 100%;
   border-collapse: collapse;

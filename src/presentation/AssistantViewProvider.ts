@@ -7,6 +7,7 @@ import { inboundMessageSchema, type InboundMessage } from "../protocol/messages.
 import type { ChatService } from "../chat/ChatService.js";
 import type { ChatSessionStore } from "../chat/ChatSessionStore.js";
 import { requireExecutablePlan } from "../chat/PlanConfirmation.js";
+import { requireRegenerationTarget } from "../chat/RegenerationTarget.js";
 import type { ChangeManager } from "../changes/ChangeManager.js";
 import type { OpenAICompatibleProvider } from "../providers/OpenAICompatibleProvider.js";
 import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
@@ -256,6 +257,57 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         );
         return;
       }
+      case "chat/regenerate": {
+        if (this.requests.size > 0) {
+          throw new Error("当前已有任务正在执行，请等待任务完成后再重新生成。");
+        }
+        const target = requireRegenerationTarget(
+          this.dependencies.sessions.get(message.sessionId),
+          message.assistantMessageId,
+        );
+        const regenerationRequest = {
+          mode: target.mode,
+          text: target.text,
+          includeActiveEditor: message.includeActiveEditor,
+          includeWorkspace: message.includeWorkspace,
+          contextIds: [] as const,
+        };
+        if (!(await this.ensureChatPermissions(regenerationRequest))) {
+          return;
+        }
+        await this.beginChat(
+          message.requestId,
+          message.sessionId,
+          target.text,
+          target.mode,
+          message.providerId,
+          regenerationRequest.contextIds,
+          message.includeActiveEditor,
+          message.includeWorkspace,
+          target.historyEndIndex,
+        );
+        return;
+      }
+      case "code/propose-insert": {
+        if (!(await this.confirmPermission("read", "读取当前文件并生成代码片段候选变更"))) {
+          return;
+        }
+        const spec = this.dependencies.workspace.createActiveEditorInsertion(
+          message.code,
+          message.language,
+        );
+        const proposed = await this.dependencies.changes.propose([spec]);
+        const change = proposed[0];
+        if (!change) {
+          throw new Error("未能生成代码片段候选变更。");
+        }
+        await this.post({
+          type: "code/proposed",
+          changeId: change.id,
+          path: change.path,
+        });
+        return;
+      }
       case "chat/cancel":
         this.requests.get(message.requestId)?.abort();
         return;
@@ -350,6 +402,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     contextIds: readonly string[],
     includeActiveEditor: boolean,
     includeWorkspace: boolean,
+    historyEndIndex?: number,
   ): Promise<void> {
     if (this.requests.has(requestId)) {
       throw new Error("请求 ID 重复。");
@@ -358,7 +411,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     if (!session) {
       throw new Error("当前对话不存在，请新建对话后重试。");
     }
-    const history = session.messages.map((message) => ({
+    const historySource =
+      historyEndIndex === undefined ? session.messages : session.messages.slice(0, historyEndIndex);
+    const history = historySource.map((message) => ({
       role: message.role,
       content: message.text,
     }));

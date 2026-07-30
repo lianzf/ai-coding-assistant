@@ -5,10 +5,12 @@ import type {
   WorkspaceSearchResult,
 } from "../domain/workspace.js";
 import type { ProjectOverview } from "../domain/project.js";
+import type { ChangeSpec } from "../domain/change.js";
 import type { PermissionGate } from "../domain/permission.js";
 import { isSensitivePath } from "../security/PathPolicy.js";
 import { sanitizeGitDiff } from "../security/ContentRedactor.js";
 import type { ProjectOverviewCache } from "./ProjectOverviewCache.js";
+import { insertTextRange } from "./EditorInsertion.js";
 
 interface GitExtension {
   readonly enabled: boolean;
@@ -492,6 +494,42 @@ export class WorkspaceService implements vscode.Disposable {
       throw new Error("安全策略禁止访问该敏感路径。");
     }
     return uri;
+  }
+
+  public createActiveEditorInsertion(code: string, language?: string): ChangeSpec {
+    this.requireTrustedWorkspace();
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      throw new Error("请先打开需要插入代码的工作区文件。");
+    }
+    this.assertInsideWorkspace(editor.document.uri);
+    if (isSensitivePath(editor.document.uri.path)) {
+      throw new Error("当前文件命中敏感路径策略，禁止生成修改。");
+    }
+    const original = editor.document.getText();
+    if (original.length > 2_000_000) {
+      throw new Error("当前文件超过 200 万字符，无法生成安全变更。");
+    }
+    const selection = editor.selection;
+    const proposed = insertTextRange(
+      original,
+      editor.document.offsetAt(selection.start),
+      editor.document.offsetAt(selection.end),
+      code,
+    );
+    if (proposed === original) {
+      throw new Error("代码片段没有产生任何内容变化。");
+    }
+    const relativePath = vscode.workspace
+      .asRelativePath(editor.document.uri, false)
+      .replaceAll("\\", "/");
+    this.resolveRelativePath(relativePath);
+    return {
+      path: relativePath,
+      operation: "update",
+      content: proposed,
+      reason: language ? `从 AI 回复插入 ${language} 代码片段` : "从 AI 回复插入代码片段",
+    };
   }
 
   public assertInsideWorkspace(uri: vscode.Uri): void {
