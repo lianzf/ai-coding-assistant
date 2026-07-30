@@ -6,6 +6,7 @@ import type { FileChange } from "../domain/change.js";
 import { inboundMessageSchema, type InboundMessage } from "../protocol/messages.js";
 import type { ChatService } from "../chat/ChatService.js";
 import type { ChatSessionStore } from "../chat/ChatSessionStore.js";
+import type { ExecutionHistoryStore } from "../chat/ExecutionHistoryStore.js";
 import { requireExecutablePlan } from "../chat/PlanConfirmation.js";
 import { requireRegenerationTarget } from "../chat/RegenerationTarget.js";
 import type { ChangeManager } from "../changes/ChangeManager.js";
@@ -31,6 +32,7 @@ export interface AssistantViewDependencies {
   readonly extensionUri: vscode.Uri;
   readonly chat: ChatService;
   readonly sessions: ChatSessionStore;
+  readonly executions: ExecutionHistoryStore;
   readonly configs: ProviderConfigStore;
   readonly secrets: SecretManager;
   readonly permissions: PermissionStore;
@@ -201,6 +203,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       case "session/delete": {
         this.assertSessionManagementAvailable();
         const fallback = await this.dependencies.sessions.remove(message.sessionId);
+        await this.persistExecution(this.dependencies.executions.removeSession(message.sessionId));
         if (this.activeSessionId === message.sessionId) {
           this.activeSessionId = fallback.id;
         }
@@ -497,6 +500,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       .map((id) => this.manualContexts.get(id))
       .filter((context): context is ManualContext => context !== undefined);
     const userMessage = await this.dependencies.sessions.appendUser(sessionId, text, mode);
+    await this.persistExecution(
+      this.dependencies.executions.start(sessionId, requestId, "chat", mode),
+    );
     this.activeSessionId = sessionId;
     const controller = new AbortController();
     this.requests.set(requestId, controller);
@@ -532,6 +538,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
               void this.post({ type: "chat/delta", requestId, text: event.text });
               break;
             case "status":
+              void this.persistExecution(
+                this.dependencies.executions.setStatus(requestId, event.message),
+              );
               void this.post({
                 type: "chat/status",
                 requestId,
@@ -540,6 +549,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
               });
               break;
             case "tool-start":
+              void this.persistExecution(
+                this.dependencies.executions.startStep(requestId, {
+                  id: event.callId,
+                  name: event.name,
+                  label: event.label,
+                  input: event.input,
+                  status: "running",
+                  summary: "",
+                }),
+              );
               void this.post({
                 type: "chat/tool-start",
                 requestId,
@@ -550,6 +569,15 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
               });
               break;
             case "tool-result":
+              void this.persistExecution(
+                this.dependencies.executions.finishStep(
+                  requestId,
+                  event.callId,
+                  event.ok,
+                  event.summary,
+                  event.durationMs,
+                ),
+              );
               void this.post({
                 type: "chat/tool-result",
                 requestId,
@@ -563,6 +591,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         },
       );
       await this.dependencies.sessions.appendAssistant(sessionId, requestId, result.answer, mode);
+      await this.persistExecution(
+        this.dependencies.executions.finish(requestId, "completed", "任务已完成"),
+      );
       await this.post({
         type: "chat/complete",
         requestId,
@@ -573,6 +604,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     } catch (error) {
       const message = controller.signal.aborted ? "生成已停止。" : this.errorMessage(error);
       await this.dependencies.sessions.appendError(sessionId, requestId, message, mode);
+      await this.persistExecution(
+        this.dependencies.executions.finish(
+          requestId,
+          controller.signal.aborted ? "cancelled" : "failed",
+          controller.signal.aborted ? "任务已停止" : message,
+        ),
+      );
       await this.post({
         type: "chat/error",
         requestId,
@@ -764,13 +802,68 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       return undefined;
     }
     const controller = new AbortController();
+    let manualExecutionId: string | undefined;
     if (source === "manual") {
+      const session = await this.resolveActiveSession();
+      manualExecutionId = randomUUID();
+      await this.persistExecution(
+        this.dependencies.executions.start(session.id, manualExecutionId, "test"),
+      );
+      await this.persistExecution(
+        this.dependencies.executions.startStep(manualExecutionId, {
+          id: "local-test",
+          name: "run_tests",
+          label: "运行项目测试",
+          input: command.displayCommand,
+          status: "running",
+          summary: "",
+        }),
+      );
       await this.post({ type: "test/started", command: command.displayCommand });
     }
-    const result = await this.dependencies.tests.run(command, controller.signal);
+    let result: TestRunResult;
+    try {
+      result = await this.dependencies.tests.run(command, controller.signal);
+    } catch (error) {
+      if (source === "manual" && manualExecutionId) {
+        const message = this.errorMessage(error);
+        await this.persistExecution(
+          this.dependencies.executions.finishStep(manualExecutionId, "local-test", false, message),
+        );
+        await this.persistExecution(
+          this.dependencies.executions.finish(manualExecutionId, "failed", message),
+        );
+        await this.post({ type: "test/error", message });
+        await this.postSessionState();
+      }
+      throw error;
+    }
     if (source === "manual") {
+      const passed = result.exitCode === 0 && !result.cancelled;
+      const summary = passed
+        ? "项目测试通过"
+        : `项目测试失败（退出码 ${result.exitCode ?? "未知"}）`;
+      if (manualExecutionId) {
+        await this.persistExecution(
+          this.dependencies.executions.finishStep(
+            manualExecutionId,
+            "local-test",
+            passed,
+            summary,
+            result.durationMs,
+          ),
+        );
+        await this.persistExecution(
+          this.dependencies.executions.finish(
+            manualExecutionId,
+            passed ? "completed" : "failed",
+            summary,
+          ),
+        );
+      }
       await this.post({ type: "test/result", result });
-      if (result.exitCode === 0) {
+      await this.postSessionState();
+      if (passed) {
         await vscode.window.showInformationMessage("单元测试执行成功。");
       } else {
         await vscode.window.showErrorMessage(`单元测试失败，退出码：${result.exitCode ?? "未知"}`);
@@ -799,6 +892,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       workspaceTrusted: vscode.workspace.isTrusted,
       sessions: this.dependencies.sessions.list(),
       activeSession,
+      executionHistory: this.dependencies.executions.list(activeSession.id),
     });
   }
 
@@ -850,6 +944,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         total: changes.length,
         statusCounts: changeStatusCounts,
       },
+      executions: {
+        total: sessions.reduce(
+          (total, session) => total + this.dependencies.executions.list(session.id).length,
+          0,
+        ),
+      },
     };
     await vscode.env.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
     await this.post({
@@ -864,6 +964,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       type: "sessions/state",
       sessions: this.dependencies.sessions.list(),
       activeSession,
+      executionHistory: this.dependencies.executions.list(activeSession.id),
     });
   }
 
@@ -952,6 +1053,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private async persistExecution(operation: Promise<void>): Promise<void> {
+    try {
+      await operation;
+    } catch (error) {
+      console.error("AI Coding Assistant 无法保存任务时间线。", error);
+    }
   }
 
   private assertSessionManagementAvailable(): void {

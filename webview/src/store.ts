@@ -138,6 +138,18 @@ export interface ExecutionStep {
   readonly durationMs?: number;
 }
 
+export interface TaskExecutionView {
+  readonly sessionId: string;
+  readonly requestId: string;
+  readonly kind: "chat" | "test";
+  readonly mode?: ChatMode;
+  readonly status: "running" | "completed" | "failed" | "cancelled";
+  readonly summary: string;
+  readonly steps: readonly ExecutionStep[];
+  readonly startedAt: string;
+  readonly completedAt?: string;
+}
+
 export interface ManualContextView {
   readonly id: string;
   readonly kind: "directory" | "git-diff" | "terminal";
@@ -162,6 +174,7 @@ interface AppState {
   activeRequestId: string | undefined;
   requestStatus: string | undefined;
   executionSteps: readonly ExecutionStep[];
+  executionHistory: readonly TaskExecutionView[];
   contexts: readonly ManualContextView[];
   notice: { readonly level: "info" | "error"; readonly message: string } | undefined;
   testRunning: boolean;
@@ -220,6 +233,7 @@ export const useAppStore = create<AppState>((set) => ({
   activeRequestId: undefined,
   requestStatus: undefined,
   executionSteps: [],
+  executionHistory: [],
   contexts: [],
   notice: undefined,
   testRunning: false,
@@ -237,7 +251,10 @@ export const useAppStore = create<AppState>((set) => ({
         const activeSession = isRecord(message.activeSession)
           ? (message.activeSession as unknown as ChatSession)
           : undefined;
-        set({
+        const executionHistory = Array.isArray(message.executionHistory)
+          ? (message.executionHistory as TaskExecutionView[])
+          : [];
+        set((state) => ({
           provider: isRecord(message.provider)
             ? (message.provider as unknown as ProviderView)
             : undefined,
@@ -264,22 +281,38 @@ export const useAppStore = create<AppState>((set) => ({
           activeSession,
           messages: sessionMessages(activeSession),
           workspaceTrusted: message.workspaceTrusted === true,
-        });
+          executionHistory,
+          ...(state.activeRequestId
+            ? {}
+            : {
+                requestStatus: executionHistory[0]?.summary,
+                executionSteps: executionHistory[0]?.steps ?? [],
+              }),
+        }));
         break;
       }
       case "sessions/state": {
         const activeSession = isRecord(message.activeSession)
           ? (message.activeSession as unknown as ChatSession)
           : undefined;
+        const executionHistory = Array.isArray(message.executionHistory)
+          ? (message.executionHistory as TaskExecutionView[])
+          : [];
         set((state) => ({
           sessions: Array.isArray(message.sessions)
             ? (message.sessions as SessionSummary[])
             : state.sessions,
           activeSession,
           messages: state.activeRequestId ? state.messages : sessionMessages(activeSession),
-          executionSteps: state.activeSession?.id === activeSession?.id ? state.executionSteps : [],
+          executionHistory,
+          executionSteps:
+            state.activeRequestId && state.activeSession?.id === activeSession?.id
+              ? state.executionSteps
+              : (executionHistory[0]?.steps ?? []),
           requestStatus:
-            state.activeSession?.id === activeSession?.id ? state.requestStatus : undefined,
+            state.activeRequestId && state.activeSession?.id === activeSession?.id
+              ? state.requestStatus
+              : executionHistory[0]?.summary,
         }));
         break;
       }
@@ -506,6 +539,14 @@ export const useAppStore = create<AppState>((set) => ({
                 : step,
             ),
           }));
+        }
+        break;
+      case "test/error":
+        if (typeof message.message === "string") {
+          set({
+            testRunning: false,
+            requestStatus: message.message,
+          });
         }
         break;
       case "test/agent-result":

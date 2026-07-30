@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ChatService } from "../chat/ChatService.js";
 import { ChatSessionStore } from "../chat/ChatSessionStore.js";
+import { ExecutionHistoryStore } from "../chat/ExecutionHistoryStore.js";
 import { ChangeManager } from "../changes/ChangeManager.js";
 import { ChangeHistoryStore } from "../changes/ChangeHistoryStore.js";
 import { VsCodeChangeGateway } from "../changes/VsCodeChangeGateway.js";
@@ -24,6 +25,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
   const projectCache = new ProjectOverviewCache(context.workspaceState);
   const workspace = new WorkspaceService(permissions, projectCache);
   const sessions = new ChatSessionStore(context.workspaceState);
+  const executions = new ExecutionHistoryStore(context.workspaceState);
   const changeGateway = new VsCodeChangeGateway(workspace, permissions);
   const changeHistory = new ChangeHistoryStore(context.workspaceState);
   const changes = new ChangeManager(changeGateway, changeHistory.load());
@@ -38,6 +40,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
     extensionUri: context.extensionUri,
     chat,
     sessions,
+    executions,
     configs,
     secrets,
     permissions,

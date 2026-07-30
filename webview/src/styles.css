@@ -644,6 +644,21 @@ h3 {
   text-align: left;
 }
 
+.execution-history-toolbar {
+  display: grid;
+  padding: 7px 9px 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.execution-history-toolbar select {
+  min-width: 0;
+  padding: 3px 5px;
+}
+
 .execution-summary > strong {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -665,6 +680,10 @@ h3 {
 .execution-indicator.running {
   background: var(--vscode-progressBar-background);
   animation: pulse 700ms infinite alternate;
+}
+
+.execution-indicator.failed {
+  background: var(--vscode-errorForeground);
 }
 
 .execution-steps {

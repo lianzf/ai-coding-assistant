@@ -469,10 +469,28 @@ function ChatView(): React.JSX.Element {
 }
 
 function ExecutionTimeline(): React.JSX.Element | null {
-  const status = useAppStore((state) => state.requestStatus);
-  const steps = useAppStore((state) => state.executionSteps);
+  const liveStatus = useAppStore((state) => state.requestStatus);
+  const liveSteps = useAppStore((state) => state.executionSteps);
+  const history = useAppStore((state) => state.executionHistory);
+  const activeSessionId = useAppStore((state) => state.activeSession?.id);
   const running = useAppStore((state) => Boolean(state.activeRequestId) || state.testRunning);
   const [expanded, setExpanded] = useState(true);
+  const [selection, setSelection] = useState<{
+    readonly sessionId: string | undefined;
+    readonly requestId: string;
+  }>();
+  const selectedRequestId =
+    selection && selection.sessionId === activeSessionId ? selection.requestId : undefined;
+
+  const selectedRecord =
+    history.find((record) => record.requestId === selectedRequestId) ?? history[0];
+  const status = running ? liveStatus : (selectedRecord?.summary ?? liveStatus);
+  const steps = running ? liveSteps : (selectedRecord?.steps ?? liveSteps);
+  const indicatorStatus = running
+    ? "running"
+    : selectedRecord?.status === "failed" || selectedRecord?.status === "cancelled"
+      ? "failed"
+      : "completed";
 
   if (!status && steps.length === 0) {
     return null;
@@ -480,13 +498,38 @@ function ExecutionTimeline(): React.JSX.Element | null {
 
   return (
     <section className="execution-timeline" aria-live="polite">
+      {!running && history.length > 1 && (
+        <label className="execution-history-toolbar">
+          <span>任务记录</span>
+          <select
+            value={selectedRecord?.requestId ?? ""}
+            onChange={(event) =>
+              setSelection({
+                sessionId: activeSessionId,
+                requestId: event.target.value,
+              })
+            }
+            aria-label="历史任务记录"
+          >
+            {history.map((record) => (
+              <option key={record.requestId} value={record.requestId}>
+                {record.kind === "test"
+                  ? "项目测试"
+                  : modes.find((mode) => mode.value === record.mode)?.label || "对话任务"}
+                {" · "}
+                {new Date(record.startedAt).toLocaleString()}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <button
         type="button"
         className="execution-summary"
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
       >
-        <span className={`execution-indicator ${running ? "running" : "completed"}`} />
+        <span className={`execution-indicator ${indicatorStatus}`} />
         <strong>{status ?? "任务执行过程"}</strong>
         <span>{steps.length > 0 ? `${steps.length} 个工具步骤` : ""}</span>
         <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
