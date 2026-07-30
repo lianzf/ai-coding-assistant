@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.10.x`。
+本文档适用于 AI Coding Assistant `0.11.x`。
 
 插件标识：
 
@@ -19,6 +19,8 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 - 本地高亮、复制和送审 AI 代码块；
 - 归档和恢复按工作区持久化的会话；
 - 在 VS Code 重载后恢复待审核变更与任务检查点；
+- 分析项目模块之间的本地引用关系并跳转到证据文件；
+- 按会话恢复 Agent 工具和项目测试执行时间线；
 - 通过首次使用向导完成工作区信任、模型配置和连接测试；
 - 复制不含密钥、地址、路径或代码的脱敏诊断摘要；
 - 读取当前文件、选区和工作区代码；
@@ -57,9 +59,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.10.0.vsix
-ai-coding-assistant-0.10.0.vsix.sha256
-ai-coding-assistant-0.10.0.metadata.json
+ai-coding-assistant-0.11.0.vsix
+ai-coding-assistant-0.11.0.vsix.sha256
+ai-coding-assistant-0.11.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -67,15 +69,15 @@ ai-coding-assistant-0.10.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.10.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.10.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.11.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.11.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.10.0.vsix
-cat ai-coding-assistant-0.10.0.vsix.sha256
+sha256sum ai-coding-assistant-0.11.0.vsix
+cat ai-coding-assistant-0.11.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -88,13 +90,13 @@ cat ai-coding-assistant-0.10.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.10.0.vsix`。
+5. 选择 `ai-coding-assistant-0.11.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.10.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.11.0.vsix --force
 ```
 
 检查安装结果：
@@ -107,13 +109,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.10.0
+local-project.ai-coding-assistant@0.11.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.10.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.11.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -130,7 +132,7 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 
 升级后必须重新加载 VS Code 窗口。
 
-从 `0.3.x` 至 `0.9.x` 升级到 `0.10.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。旧版变更记录未持久化，只有升级后新生成的变更和检查点可以跨重载恢复。
+从 `0.3.x` 至 `0.10.x` 升级到 `0.11.x` 时，原有模型配置、API Key、会话、权限和 0.10 版本生成的变更检查点会继续使用，无需重新录入。项目画像缓存会自动升级并重新分析，以生成模块依赖关系。
 
 ### 4.5 卸载
 
@@ -307,6 +309,8 @@ Model ID：deepseek-v4-pro
 
 工具调用最多连续执行六轮。每一步都会在输入区上方的执行时间线中显示工具名称、目标、成功或失败状态、结果摘要和耗时。手动运行项目测试时，测试命令、运行状态、退出码和耗时也会进入同一时间线，并可在“对话”和“变更”入口查看。工具仍受工作区信任、敏感路径和最大内容长度限制，不允许直接写入文件或执行任意终端命令。
 
+任务时间线按会话保存在当前工作区，重新加载 VS Code 或切换历史会话后仍可恢复。时间线顶部的“任务记录”可以查看当前会话最近 20 次对话任务或手动测试；工作区总计最多保存 100 条记录，每条最多 40 个步骤。若 VS Code 在任务仍运行时重载，该任务和未完成步骤会明确标记为“中断/失败”，不会误报成功。删除会话时会一并删除其任务记录。
+
 在“执行”模式中，模型还可以请求 `run_project_tests`。该工具不接受模型提供的命令，而是复用插件内部的固定测试命令检测规则。每次请求都会在 Extension Host 中显示实际命令、工作目录和执行方式，只有用户点击“运行测试”后才启动进程。成功、失败、退出码、耗时和最多 4 万字符的末尾输出会作为工具结果返回模型，供其总结验证结果或继续修正；拒绝审批会作为一次失败工具结果返回，且不会执行命令。
 
 注意：首次执行回合中的候选 ChangeSet 尚未写入工作区，此时运行测试只能建立原始项目基线，不能证明候选修改有效。要验证真实修改，应先在“变更”入口完成 Diff 审核并应用，再使用“Agent 验证变更”。
@@ -398,6 +402,8 @@ Model ID：deepseek-v4-pro
 - 主要语言、技术栈和包管理器；
 - 运行依赖、开发依赖和最多 40 个依赖名称；
 - 顶层模块、常见入口和配置文件；
+- JavaScript、TypeScript、Python 跨模块引用以及工作区包依赖关系；
+- 每条模块关系的证据文件和引用次数，点击路径可直接在编辑器打开；
 - `package.json` 中可用的项目脚本；
 - 当前 Git 分支，以及变更、暂存、未跟踪和冲突文件数量；
 - 大项目、缺少测试、依赖过多、敏感路径和 Git 冲突等结构风险；
@@ -405,6 +411,8 @@ Model ID：deepseek-v4-pro
 - 索引是完整还是部分、来自缓存还是重新扫描。
 
 项目画像按工作区保存 15 分钟缓存，重新加载 VS Code 后可以直接恢复。工作区文件创建、修改或删除时缓存会自动失效；点击“重新分析”始终强制刷新。项目概览不会自动发送给远程模型，敏感路径仍会被安全策略过滤。
+
+模块依赖分析最多读取 400 个安全文本文件、累计不超过 800 万字符，单个磁盘文件读取上限约 25.6 万字节，并最多展示 60 条关系。达到预算或项目索引上限时，项目页会显示已分析和跳过的文件数量，避免大项目无边界扫描。
 
 ## 9. 生成与审核代码修改
 
@@ -723,6 +731,7 @@ Webview 不能自行指定“已应用文件”，Extension Host 会重新读取
 - [ ] 当前文件/选区可以作为上下文；
 - [ ] 工作区搜索可以返回结果；
 - [ ] 项目概览包含依赖、Git 状态、风险和阅读建议；
+- [ ] 项目概览显示模块依赖关系、引用次数和可点击证据文件；
 - [ ] 重新打开项目时可以恢复有效画像缓存；
 - [ ] 修改工作区文件后项目画像缓存会失效；
 - [ ] AI 修改可以打开原生 Diff；
@@ -731,6 +740,8 @@ Webview 不能自行指定“已应用文件”，Extension Host 会重新读取
 - [ ] 测试命令运行前会要求确认；
 - [ ] 执行模式请求测试时会逐次显示命令审批；
 - [ ] Agent 能收到测试成功或失败结果并继续回答；
+- [ ] 切换会话或重载 VS Code 后可以查看历史任务时间线；
+- [ ] 重载时未完成任务会被标记为中断而不是成功；
 - [ ] 归档的会话只读且可以恢复；
 - [ ] 重载 VS Code 后待审核变更和检查点可以恢复；
 - [ ] 脱敏诊断不包含密钥、模型地址、工作区路径或代码；
