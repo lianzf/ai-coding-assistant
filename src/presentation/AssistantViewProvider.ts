@@ -14,6 +14,7 @@ import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
 import type { SecretManager } from "../security/SecretManager.js";
 import type { PermissionStore } from "../security/PermissionStore.js";
 import type { TestRunner } from "../testing/TestRunner.js";
+import type { TestRunResult } from "../domain/testing.js";
 import type { WorkspaceService } from "../workspace/WorkspaceService.js";
 import type { ContextAttachment } from "../domain/workspace.js";
 import { redactPotentialSecrets } from "../security/ContentRedactor.js";
@@ -445,6 +446,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           includeWorkspace,
           history,
           extraContext,
+          ...(mode === "agent"
+            ? { runProjectTests: async () => await this.runApprovedTests("agent") }
+            : {}),
           signal: controller.signal,
         },
         (event) => {
@@ -658,11 +662,17 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   public async confirmAndRunTests(): Promise<void> {
+    await this.runApprovedTests("manual");
+  }
+
+  private runApprovedTests(source: "manual"): Promise<TestRunResult | undefined>;
+  private runApprovedTests(source: "agent"): Promise<TestRunResult>;
+  private async runApprovedTests(source: "manual" | "agent"): Promise<TestRunResult | undefined> {
     this.dependencies.permissions.assertAvailable("command");
     const command = await this.dependencies.tests.detect();
     const choice = await vscode.window.showWarningMessage(
       [
-        "确认运行单元测试？",
+        source === "agent" ? "Agent 请求运行项目测试，是否批准？" : "确认运行单元测试？",
         `命令：${command.displayCommand}`,
         `工作目录：${command.cwd}`,
         process.platform === "win32" && command.executable.endsWith(".cmd")
@@ -673,17 +683,27 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       "运行测试",
     );
     if (choice !== "运行测试") {
-      return;
+      if (source === "agent") {
+        throw new Error("用户未批准运行项目测试。");
+      }
+      return undefined;
     }
     const controller = new AbortController();
-    await this.post({ type: "test/started", command: command.displayCommand });
-    const result = await this.dependencies.tests.run(command, controller.signal);
-    await this.post({ type: "test/result", result });
-    if (result.exitCode === 0) {
-      await vscode.window.showInformationMessage("单元测试执行成功。");
-    } else {
-      await vscode.window.showErrorMessage(`单元测试失败，退出码：${result.exitCode ?? "未知"}`);
+    if (source === "manual") {
+      await this.post({ type: "test/started", command: command.displayCommand });
     }
+    const result = await this.dependencies.tests.run(command, controller.signal);
+    if (source === "manual") {
+      await this.post({ type: "test/result", result });
+      if (result.exitCode === 0) {
+        await vscode.window.showInformationMessage("单元测试执行成功。");
+      } else {
+        await vscode.window.showErrorMessage(`单元测试失败，退出码：${result.exitCode ?? "未知"}`);
+      }
+    } else {
+      await this.post({ type: "test/agent-result", result });
+    }
+    return result;
   }
 
   private async pushState(): Promise<void> {

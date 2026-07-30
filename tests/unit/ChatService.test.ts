@@ -84,6 +84,7 @@ describe("ChatService", () => {
     expect(result.answer).toBe("已找到订单创建入口。");
     expect(requests).toHaveLength(2);
     expect(requests[0]?.tools?.map((tool) => tool.name)).toContain("search_workspace");
+    expect(requests[0]?.tools?.map((tool) => tool.name)).not.toContain("run_project_tests");
     expect(requests[1]?.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -101,4 +102,95 @@ describe("ChatService", () => {
       ]),
     );
   });
+
+  it.each([
+    { exitCode: 0, expectedOk: true },
+    { exitCode: 1, expectedOk: false },
+  ])(
+    "runs project tests through the user-approved Agent callback",
+    async ({ exitCode, expectedOk }) => {
+      const requests: ModelChatRequest[] = [];
+      const provider = {
+        async *streamChat(_config: ProviderConfig, _apiKey: string, request: ModelChatRequest) {
+          await Promise.resolve();
+          requests.push(request);
+          if (requests.length === 1) {
+            yield {
+              type: "tool-call" as const,
+              call: {
+                id: "call-tests",
+                name: "run_project_tests",
+                arguments: "{}",
+              },
+            };
+            yield { type: "finish" as const, reason: "tool_calls" };
+            return;
+          }
+          yield { type: "text" as const, text: "验证完成。" };
+          yield { type: "finish" as const, reason: "stop" };
+        },
+      } as unknown as OpenAICompatibleProvider;
+      const workspace = {
+        buildContext: () =>
+          Promise.resolve({
+            attachments: [],
+            text: "",
+            characterCount: 0,
+          }),
+      } as unknown as WorkspaceService;
+      const service = new ChatService(
+        { get: () => Promise.resolve(config) } as unknown as ProviderConfigStore,
+        { getApiKey: () => Promise.resolve("secret") } as unknown as SecretManager,
+        provider,
+        workspace,
+        { propose: () => Promise.resolve([]) } as unknown as ChangeManager,
+      );
+      const events: ChatExecutionEvent[] = [];
+      let approvals = 0;
+
+      await service.send(
+        {
+          text: "修改后运行测试",
+          mode: "agent",
+          providerId: "default",
+          includeActiveEditor: false,
+          includeWorkspace: false,
+          history: [],
+          runProjectTests: () => {
+            approvals += 1;
+            return Promise.resolve({
+              command: "pnpm test",
+              exitCode,
+              output: exitCode === 0 ? "all passed" : "one failed",
+              durationMs: 42,
+              cancelled: false,
+            });
+          },
+          signal: new AbortController().signal,
+        },
+        (event) => events.push(event),
+      );
+
+      expect(approvals).toBe(1);
+      expect(requests[0]?.tools?.map((tool) => tool.name)).toContain("run_project_tests");
+      expect(requests[1]?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "tool",
+            toolCallId: "call-tests",
+            content: expect.stringContaining('"command":"pnpm test"') as unknown,
+          }),
+        ]),
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "tool-result",
+            callId: "call-tests",
+            ok: expectedOk,
+          }),
+        ]),
+      );
+    },
+  );
 });

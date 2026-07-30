@@ -493,6 +493,14 @@ export const useAppStore = create<AppState>((set) => ({
           }));
         }
         break;
+      case "test/agent-result":
+        if (isRecord(message.result)) {
+          set({
+            testRunning: false,
+            testResult: message.result as unknown as AppState["testResult"],
+          });
+        }
+        break;
       case "project/analyzing":
         set({ projectAnalyzing: true });
         break;

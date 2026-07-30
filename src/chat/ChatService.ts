@@ -14,6 +14,7 @@ import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
 import type { SecretManager } from "../security/SecretManager.js";
 import type { WorkspaceService } from "../workspace/WorkspaceService.js";
 import type { ContextAttachment } from "../domain/workspace.js";
+import type { TestRunResult } from "../domain/testing.js";
 
 const maximumToolRounds = 6;
 const maximumToolOutputCharacters = 80_000;
@@ -99,6 +100,17 @@ const projectTools: readonly ToolDefinition[] = [
   },
 ];
 
+const projectTestTool: ToolDefinition = {
+  name: "run_project_tests",
+  description:
+    "请求运行插件检测到的项目测试命令。每次调用都会在 Extension Host 中向用户展示固定命令、工作目录和执行方式，只有用户明确批准后才会运行。",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  },
+};
+
 export interface SendChatRequest {
   readonly text: string;
   readonly mode: ChatMode;
@@ -107,6 +119,7 @@ export interface SendChatRequest {
   readonly includeWorkspace: boolean;
   readonly history: readonly ChatMessage[];
   readonly extraContext?: readonly ContextAttachment[];
+  readonly runProjectTests?: () => Promise<TestRunResult>;
   readonly signal: AbortSignal;
 }
 
@@ -140,6 +153,7 @@ export type ChatExecutionEvent =
 interface ToolExecutionResult {
   readonly content: string;
   readonly summary: string;
+  readonly ok?: boolean;
 }
 
 export class ChatService {
@@ -185,7 +199,12 @@ export class ChatService {
       ...history,
       { role: "user", content: userContent },
     ];
-    const tools = request.mode === "ask" ? undefined : projectTools;
+    const tools =
+      request.mode === "ask"
+        ? undefined
+        : request.mode === "agent" && request.runProjectTests
+          ? [...projectTools, projectTestTool]
+          : projectTools;
 
     for (let round = 0; round < maximumToolRounds; round += 1) {
       onEvent({
@@ -242,11 +261,11 @@ export class ChatService {
           input: metadata.input,
         });
         try {
-          const result = await this.executeTool(call);
+          const result = await this.executeTool(call, request);
           onEvent({
             type: "tool-result",
             callId: call.id,
-            ok: true,
+            ok: result.ok !== false,
             summary: result.summary,
             durationMs: Date.now() - started,
           });
@@ -276,7 +295,10 @@ export class ChatService {
     throw new Error(`Agent 工具调用超过安全上限 ${maximumToolRounds} 轮，已停止任务。`);
   }
 
-  private async executeTool(call: ToolCall): Promise<ToolExecutionResult> {
+  private async executeTool(
+    call: ToolCall,
+    request: SendChatRequest,
+  ): Promise<ToolExecutionResult> {
     const input = this.parseArguments(call);
     switch (call.name) {
       case "list_workspace_files": {
@@ -317,6 +339,28 @@ export class ChatService {
           summary: `已分析 ${overview.fileCount} 个文件和 ${overview.testFileCount} 个测试文件`,
         };
       }
+      case "run_project_tests": {
+        emptyArgumentsSchema.parse(input);
+        if (!request.runProjectTests) {
+          throw new Error("当前任务没有获得测试执行能力。");
+        }
+        const result = await request.runProjectTests();
+        const passed = result.exitCode === 0 && !result.cancelled;
+        return {
+          content: JSON.stringify({
+            ok: passed,
+            command: result.command,
+            exitCode: result.exitCode,
+            durationMs: result.durationMs,
+            cancelled: result.cancelled,
+            output: result.output.slice(-40_000),
+          }),
+          summary: passed
+            ? `项目测试通过（${result.command}，${result.durationMs} ms）`
+            : `项目测试失败（${result.command}，退出码 ${result.exitCode ?? "未知"}）`,
+          ok: passed,
+        };
+      }
       default:
         throw new Error(`模型请求了未授权工具：${call.name}`);
     }
@@ -351,6 +395,7 @@ export class ChatService {
       search_workspace: "搜索工作区",
       read_workspace_file: "读取项目文件",
       get_project_overview: "分析项目概览",
+      run_project_tests: "运行项目测试",
     };
     return {
       label: labels[call.name] ?? "调用项目工具",
@@ -383,6 +428,7 @@ export class ChatService {
         "如需提出文件修改，只能在回答末尾提供一个 ```ai-change-set 代码块。",
         '其 JSON 格式必须为 {"changes":[{"path":"工作区相对路径","operation":"create|update","content":"完整文件内容","reason":"原因"}]}。',
         "禁止使用 delete 或 rename。修改不会自动应用，必须由用户审核 Diff 并明确批准。",
+        "如需验证修改，可以调用 run_project_tests；每次实际运行前仍必须由用户在 Extension Host 中批准。",
         "先简要说明执行计划，再给出结果和验证建议。",
       );
     }
