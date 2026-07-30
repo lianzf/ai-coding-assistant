@@ -18,8 +18,13 @@ export class ChatSessionStore {
         title: session.title,
         updatedAt: session.updatedAt,
         messageCount: session.messages.length,
+        archived: session.archivedAt !== undefined,
       }))
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      .sort(
+        (left, right) =>
+          Number(left.archived) - Number(right.archived) ||
+          right.updatedAt.localeCompare(left.updatedAt),
+      );
   }
 
   public get(id: string): ChatSession | undefined {
@@ -27,7 +32,7 @@ export class ChatSessionStore {
   }
 
   public async ensure(): Promise<ChatSession> {
-    const existing = this.sessions()[0];
+    const existing = this.sessions().find((session) => session.archivedAt === undefined);
     return existing ?? this.create();
   }
 
@@ -55,15 +60,40 @@ export class ChatSessionStore {
 
   public async remove(id: string): Promise<ChatSession> {
     const remaining = this.sessions().filter((session) => session.id !== id);
-    if (remaining.length > 0) {
-      await this.save(remaining);
-      return remaining[0] as ChatSession;
+    await this.save(remaining);
+    const fallback = remaining.find((session) => session.archivedAt === undefined);
+    if (fallback) {
+      return fallback;
     }
-    await this.save([]);
     return this.create();
   }
 
+  public async archive(id: string): Promise<ChatSession> {
+    const archivedAt = new Date().toISOString();
+    await this.replace(id, (session) => ({
+      ...session,
+      archivedAt,
+      updatedAt: archivedAt,
+    }));
+    const fallback = this.sessions().find((session) => session.archivedAt === undefined);
+    return fallback ?? this.create();
+  }
+
+  public async restore(id: string): Promise<void> {
+    const updatedAt = new Date().toISOString();
+    await this.replace(id, (session) => ({
+      id: session.id,
+      title: session.title,
+      createdAt: session.createdAt,
+      updatedAt,
+      messages: session.messages,
+    }));
+  }
+
   public async appendUser(id: string, text: string, mode: ChatMode): Promise<ConversationMessage> {
+    if (this.get(id)?.archivedAt !== undefined) {
+      throw new Error("该对话已归档，请先恢复后再继续发送消息。");
+    }
     const message: ConversationMessage = {
       id: randomUUID(),
       role: "user",
@@ -145,7 +175,11 @@ export class ChatSessionStore {
 
   private save(sessions: readonly ChatSession[]): Thenable<void> {
     const sorted = [...sessions]
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .sort(
+        (left, right) =>
+          Number(left.archivedAt !== undefined) - Number(right.archivedAt !== undefined) ||
+          right.updatedAt.localeCompare(left.updatedAt),
+      )
       .slice(0, maximumSessions);
     return this.state.update(storageKey, sorted);
   }

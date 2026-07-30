@@ -178,12 +178,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await this.post({ type: "ui/info", message: "权限设置已更新。" });
         return;
       case "session/new": {
+        this.assertSessionManagementAvailable();
         const session = await this.dependencies.sessions.create();
         this.activeSessionId = session.id;
         await this.postSessionState();
         return;
       }
       case "session/select":
+        this.assertSessionManagementAvailable();
         if (!this.dependencies.sessions.get(message.sessionId)) {
           throw new Error("选择的对话不存在或已经被删除。");
         }
@@ -191,6 +193,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await this.postSessionState();
         return;
       case "session/delete": {
+        this.assertSessionManagementAvailable();
         const fallback = await this.dependencies.sessions.remove(message.sessionId);
         if (this.activeSessionId === message.sessionId) {
           this.activeSessionId = fallback.id;
@@ -199,7 +202,23 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         return;
       }
       case "session/rename":
+        this.assertSessionManagementAvailable();
         await this.dependencies.sessions.rename(message.sessionId, message.title);
+        await this.postSessionState();
+        return;
+      case "session/archive": {
+        this.assertSessionManagementAvailable();
+        const fallback = await this.dependencies.sessions.archive(message.sessionId);
+        if (this.activeSessionId === message.sessionId) {
+          this.activeSessionId = fallback.id;
+        }
+        await this.postSessionState();
+        return;
+      }
+      case "session/restore":
+        this.assertSessionManagementAvailable();
+        await this.dependencies.sessions.restore(message.sessionId);
+        this.activeSessionId = message.sessionId;
         await this.postSessionState();
         return;
       case "context/add":
@@ -856,6 +875,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private assertSessionManagementAvailable(): void {
+    if (this.requests.size > 0) {
+      throw new Error("当前任务正在执行，请等待完成后再管理对话。");
+    }
   }
 
   private async ensureChatPermissions(message: {

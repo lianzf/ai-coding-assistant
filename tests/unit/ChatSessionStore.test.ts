@@ -44,4 +44,20 @@ describe("ChatSessionStore", () => {
     expect(replacement.id).not.toBe(session.id);
     expect(store.list()).toHaveLength(1);
   });
+
+  it("archives a conversation read-only and restores it later", async () => {
+    const store = new ChatSessionStore(createMemento());
+    const session = await store.ensure();
+
+    const fallback = await store.archive(session.id);
+
+    expect(fallback.id).not.toBe(session.id);
+    expect(store.list().find((item) => item.id === session.id)?.archived).toBe(true);
+    await expect(store.appendUser(session.id, "继续", "ask")).rejects.toThrow("已归档");
+
+    await store.restore(session.id);
+
+    expect(store.get(session.id)?.archivedAt).toBeUndefined();
+    expect(store.list().find((item) => item.id === session.id)?.archived).toBe(false);
+  });
 });

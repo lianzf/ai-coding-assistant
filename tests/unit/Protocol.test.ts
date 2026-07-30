@@ -97,6 +97,18 @@ describe("Webview protocol", () => {
     );
     expect(
       inboundMessageSchema.safeParse({
+        type: "session/archive",
+        sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "session/restore",
+        sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
         type: "session/rename",
         sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
         title: "项目升级",

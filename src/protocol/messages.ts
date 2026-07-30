@@ -160,6 +160,13 @@ const sessionRenameSchema = z
   })
   .strict();
 
+const sessionLifecycleSchema = z
+  .object({
+    type: z.enum(["session/archive", "session/restore"]),
+    sessionId: z.string().uuid(),
+  })
+  .strict();
+
 const chatCancelSchema = z
   .object({
     type: z.literal("chat/cancel"),
@@ -226,6 +233,7 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   sessionSelectSchema,
   sessionDeleteSchema,
   sessionRenameSchema,
+  sessionLifecycleSchema,
   searchSchema,
   changeActionSchema,
   changeBatchActionSchema,

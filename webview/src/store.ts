@@ -59,6 +59,7 @@ export interface SessionSummary {
   readonly title: string;
   readonly updatedAt: string;
   readonly messageCount: number;
+  readonly archived: boolean;
 }
 
 export interface ChatSession {
@@ -66,6 +67,7 @@ export interface ChatSession {
   readonly title: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly archivedAt?: string;
   readonly messages: readonly ConversationMessage[];
 }
 

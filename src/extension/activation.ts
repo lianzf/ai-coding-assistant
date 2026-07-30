@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ChatService } from "../chat/ChatService.js";
 import { ChatSessionStore } from "../chat/ChatSessionStore.js";
 import { ChangeManager } from "../changes/ChangeManager.js";
+import { ChangeHistoryStore } from "../changes/ChangeHistoryStore.js";
 import { VsCodeChangeGateway } from "../changes/VsCodeChangeGateway.js";
 import { AssistantViewProvider } from "../presentation/AssistantViewProvider.js";
 import { registerCommands } from "../presentation/registerCommands.js";
@@ -24,7 +25,13 @@ export function activateExtension(context: vscode.ExtensionContext): void {
   const workspace = new WorkspaceService(permissions, projectCache);
   const sessions = new ChatSessionStore(context.workspaceState);
   const changeGateway = new VsCodeChangeGateway(workspace, permissions);
-  const changes = new ChangeManager(changeGateway);
+  const changeHistory = new ChangeHistoryStore(context.workspaceState);
+  const changes = new ChangeManager(changeGateway, changeHistory.load());
+  const changePersistence = changes.onDidChange((next) => {
+    void changeHistory.save(next).then(undefined, (error: unknown) => {
+      console.error("AI Coding Assistant 无法保存变更历史。", error);
+    });
+  });
   const tests = new TestRunner(permissions);
   const chat = new ChatService(configs, secrets, provider, workspace, changes);
   const shared = {
@@ -44,6 +51,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     changeGateway,
+    changePersistence,
     workspace,
     tests,
     chatView,

@@ -14,7 +14,14 @@ export class ChangeManager {
   private readonly changes = new Map<string, FileChange>();
   private readonly listeners = new Set<ChangeListener>();
 
-  public constructor(private readonly workspace: ChangeWorkspaceGateway) {}
+  public constructor(
+    private readonly workspace: ChangeWorkspaceGateway,
+    initialChanges: readonly FileChange[] = [],
+  ) {
+    for (const change of initialChanges) {
+      this.changes.set(change.id, change);
+    }
+  }
 
   public onDidChange(listener: ChangeListener): { dispose: () => void } {
     this.listeners.add(listener);

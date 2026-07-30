@@ -31,6 +31,29 @@ class MemoryWorkspace implements ChangeWorkspaceGateway {
 }
 
 describe("ChangeManager", () => {
+  it("restores persisted pending and applied changes", () => {
+    const initial: FileChange[] = [
+      {
+        id: "5c69fda2-a042-4b42-9e52-c6a49faf1ea8",
+        groupId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+        path: "src/restored.ts",
+        operation: "update",
+        originalContent: "before",
+        proposedContent: "after",
+        originalHash: "a".repeat(64),
+        appliedHash: "b".repeat(64),
+        addedLines: 1,
+        deletedLines: 1,
+        status: "applied",
+        createdAt: "2026-07-30T00:00:00.000Z",
+      },
+    ];
+    const manager = new ChangeManager(new MemoryWorkspace(), initial);
+
+    expect(manager.list()).toEqual(initial);
+    expect(manager.latestAppliedGroup()).toEqual(initial);
+  });
+
   it("refuses to apply a pending change before approval", async () => {
     const workspace = new MemoryWorkspace();
     workspace.files.set("src/a.ts", "old");

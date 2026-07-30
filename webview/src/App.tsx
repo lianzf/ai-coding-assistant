@@ -181,7 +181,7 @@ function ChatView(): React.JSX.Element {
   const send = (event?: FormEvent): void => {
     event?.preventDefault();
     const value = text.trim();
-    if (!value || activeRequestId || !activeSession) {
+    if (!value || activeRequestId || !activeSession || activeSession.archivedAt) {
       return;
     }
     vscode.postMessage({
@@ -206,7 +206,13 @@ function ChatView(): React.JSX.Element {
   };
 
   const executePlan = (message: ChatItem): void => {
-    if (!activeSession || activeRequestId || message.mode !== "plan" || message.error) {
+    if (
+      !activeSession ||
+      activeSession.archivedAt ||
+      activeRequestId ||
+      message.mode !== "plan" ||
+      message.error
+    ) {
       return;
     }
     vscode.postMessage({
@@ -220,7 +226,12 @@ function ChatView(): React.JSX.Element {
   };
 
   const regenerate = (message: ChatItem): void => {
-    if (!activeSession || activeRequestId || message.role !== "assistant") {
+    if (
+      !activeSession ||
+      activeSession.archivedAt ||
+      activeRequestId ||
+      message.role !== "assistant"
+    ) {
       return;
     }
     const retryMode = message.mode ?? "ask";
@@ -244,20 +255,24 @@ function ChatView(): React.JSX.Element {
       providers.find((provider) => provider.id === providerAssignments[retryMode]) ?? providers[0];
     return activeRequestId
       ? "当前已有任务正在执行"
-      : !workspaceTrusted
-        ? "当前工作区未受信任"
-        : !retryProvider?.hasApiKey
-          ? "请先为该模式配置可用模型和 API Key"
-          : undefined;
+      : activeSession?.archivedAt
+        ? "请先恢复该归档对话"
+        : !workspaceTrusted
+          ? "当前工作区未受信任"
+          : !retryProvider?.hasApiKey
+            ? "请先为该模式配置可用模型和 API Key"
+            : undefined;
   };
 
   const planExecutionDisabledReason = activeRequestId
     ? "当前已有任务正在执行"
-    : !workspaceTrusted
-      ? "当前工作区未受信任"
-      : !agentProvider?.hasApiKey
-        ? "请先为执行模式配置可用模型和 API Key"
-        : undefined;
+    : activeSession?.archivedAt
+      ? "请先恢复该归档对话"
+      : !workspaceTrusted
+        ? "当前工作区未受信任"
+        : !agentProvider?.hasApiKey
+          ? "请先为执行模式配置可用模型和 API Key"
+          : undefined;
 
   const applyTemplate = (template: string, nextMode: ChatMode, workspace = false): void => {
     setText(template);
@@ -277,6 +292,9 @@ function ChatView(): React.JSX.Element {
   return (
     <section className="chat-layout">
       <SessionToolbar />
+      {activeSession?.archivedAt && (
+        <div className="warning-card">该对话已归档，当前为只读状态。点击“恢复”后可继续协作。</div>
+      )}
 
       <div className="messages" aria-live="polite">
         {messages.length === 0 && (
@@ -427,7 +445,11 @@ function ChatView(): React.JSX.Element {
               type="submit"
               className="primary send-button"
               disabled={
-                !text.trim() || !workspaceTrusted || !activeSession || !selectedProvider?.hasApiKey
+                !text.trim() ||
+                !workspaceTrusted ||
+                !activeSession ||
+                Boolean(activeSession.archivedAt) ||
+                !selectedProvider?.hasApiKey
               }
               title={selectedProvider?.hasApiKey ? "发送消息" : "请先为当前模型配置 API Key"}
             >
@@ -490,6 +512,7 @@ function SessionToolbar(): React.JSX.Element {
   const sessions = useAppStore((state) => state.sessions);
   const activeSession = useAppStore((state) => state.activeSession);
   const activeRequestId = useAppStore((state) => state.activeRequestId);
+  const archived = activeSession?.archivedAt !== undefined;
 
   const rename = (): void => {
     if (!activeSession) {
@@ -512,6 +535,19 @@ function SessionToolbar(): React.JSX.Element {
     vscode.postMessage({ type: "session/delete", sessionId: activeSession.id });
   };
 
+  const toggleArchive = (): void => {
+    if (!activeSession) {
+      return;
+    }
+    if (archived) {
+      vscode.postMessage({ type: "session/restore", sessionId: activeSession.id });
+      return;
+    }
+    if (window.confirm(`确认归档对话“${activeSession.title}”？归档后仍可恢复。`)) {
+      vscode.postMessage({ type: "session/archive", sessionId: activeSession.id });
+    }
+  };
+
   return (
     <div className="session-toolbar">
       <select
@@ -524,6 +560,7 @@ function SessionToolbar(): React.JSX.Element {
       >
         {sessions.map((session) => (
           <option key={session.id} value={session.id}>
+            {session.archived ? "[已归档] " : ""}
             {session.title} · {session.messageCount}
           </option>
         ))}
@@ -536,10 +573,30 @@ function SessionToolbar(): React.JSX.Element {
       >
         ＋ 新对话
       </button>
-      <button type="button" className="icon-button" title="重命名" onClick={rename}>
+      <button
+        type="button"
+        className="icon-button"
+        title="重命名"
+        onClick={rename}
+        disabled={!activeSession || Boolean(activeRequestId)}
+      >
         ✎
       </button>
-      <button type="button" className="icon-button danger" title="删除对话" onClick={remove}>
+      <button
+        type="button"
+        title={archived ? "恢复对话" : "归档对话"}
+        onClick={toggleArchive}
+        disabled={!activeSession || Boolean(activeRequestId)}
+      >
+        {archived ? "恢复" : "归档"}
+      </button>
+      <button
+        type="button"
+        className="icon-button danger"
+        title="删除对话"
+        onClick={remove}
+        disabled={!activeSession || Boolean(activeRequestId)}
+      >
         ×
       </button>
     </div>
@@ -1114,15 +1171,18 @@ function ChangesView(): React.JSX.Element {
               appliedCount === 0 ||
               Boolean(activeRequestId) ||
               !activeSession ||
+              Boolean(activeSession.archivedAt) ||
               !workspaceTrusted ||
               !agentProvider?.hasApiKey
             }
             title={
               appliedCount === 0
                 ? "请先审核并应用一组修改"
-                : agentProvider?.hasApiKey
-                  ? "启动执行回合并逐次审批测试命令"
-                  : "请先为执行模式配置模型和 API Key"
+                : activeSession?.archivedAt
+                  ? "请先恢复当前归档对话"
+                  : agentProvider?.hasApiKey
+                    ? "启动执行回合并逐次审批测试命令"
+                    : "请先为执行模式配置模型和 API Key"
             }
           >
             Agent 验证变更
