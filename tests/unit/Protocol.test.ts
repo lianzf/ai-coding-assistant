@@ -9,6 +9,7 @@ describe("Webview protocol", () => {
       sessionId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
       text: "explain this",
       mode: "plan",
+      providerId: "provider-a",
       includeActiveEditor: true,
       includeWorkspace: false,
     });
@@ -18,6 +19,7 @@ describe("Webview protocol", () => {
   it("accepts provider configuration and an optional key in one message", () => {
     const result = inboundMessageSchema.safeParse({
       type: "provider/save",
+      providerId: "provider-a",
       displayName: "Internal gateway",
       baseUrl: "https://model.example.test/v1",
       modelId: "model-a",
@@ -40,6 +42,28 @@ describe("Webview protocol", () => {
     ).toBe(true);
   });
 
+  it("accepts independent provider actions and mode assignments", () => {
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "provider/test",
+        providerId: "provider-a",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "provider/assign",
+        mode: "agent",
+        providerId: "provider-a",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "provider/delete",
+        providerId: "provider-a",
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts explicit checkpoint and batch review actions", () => {
     expect(inboundMessageSchema.safeParse({ type: "change/apply-all" }).success).toBe(true);
     expect(inboundMessageSchema.safeParse({ type: "change/reject-all" }).success).toBe(true);
@@ -55,6 +79,7 @@ describe("Webview protocol", () => {
   it("rejects unknown fields on security-sensitive messages", () => {
     const result = inboundMessageSchema.safeParse({
       type: "provider/set-key",
+      providerId: "provider-a",
       apiKey: "secret",
       persistInSettings: true,
     });

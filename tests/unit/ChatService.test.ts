@@ -72,6 +72,7 @@ describe("ChatService", () => {
       {
         text: "查找订单创建入口",
         mode: "plan",
+        providerId: "default",
         includeActiveEditor: false,
         includeWorkspace: false,
         history: [],

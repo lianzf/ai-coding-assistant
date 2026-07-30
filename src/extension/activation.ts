@@ -13,7 +13,9 @@ import { WorkspaceService } from "../workspace/WorkspaceService.js";
 
 export function activateExtension(context: vscode.ExtensionContext): void {
   const secrets = new SecretManager(context.secrets);
-  const configs = new ProviderConfigStore(context.globalState, () => secrets.hasApiKey());
+  const configs = new ProviderConfigStore(context.globalState, (providerId) =>
+    secrets.hasApiKey(providerId),
+  );
   const provider = new OpenAICompatibleProvider();
   const workspace = new WorkspaceService();
   const sessions = new ChatSessionStore(context.workspaceState);

@@ -120,17 +120,28 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await this.saveProvider(message);
         return;
       case "provider/set-key":
-        await this.dependencies.secrets.setApiKey(message.apiKey);
+        await this.dependencies.secrets.setApiKey(message.apiKey, message.providerId);
         await this.pushState();
         await this.post({ type: "ui/info", message: "API Key 已安全保存。" });
         return;
       case "provider/clear-key":
-        await this.dependencies.secrets.deleteApiKey();
+        await this.dependencies.secrets.deleteApiKey(message.providerId);
         await this.pushState();
         await this.post({ type: "ui/info", message: "API Key 已移除。" });
         return;
       case "provider/test":
-        await this.testProvider();
+        await this.testProvider(message.providerId);
+        return;
+      case "provider/delete":
+        await this.dependencies.configs.remove(message.providerId);
+        await this.dependencies.secrets.deleteApiKey(message.providerId);
+        await this.pushState();
+        await this.post({ type: "ui/info", message: "模型配置及其密钥已删除。" });
+        return;
+      case "provider/assign":
+        await this.dependencies.configs.assign(message.mode, message.providerId);
+        await this.pushState();
+        await this.post({ type: "ui/info", message: "默认模型分配已更新。" });
         return;
       case "session/new": {
         const session = await this.dependencies.sessions.create();
@@ -163,6 +174,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           message.sessionId,
           message.text,
           message.mode,
+          message.providerId,
           message.includeActiveEditor,
           message.includeWorkspace,
         );
@@ -213,9 +225,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   private async saveProvider(input: ProviderSaveMessage): Promise<void> {
     const payload = toProviderSavePayload(input);
-    await this.dependencies.configs.save(payload.config);
+    await this.dependencies.configs.save(payload.config, payload.providerId);
     if (payload.apiKey !== undefined) {
-      await this.dependencies.secrets.setApiKey(payload.apiKey);
+      await this.dependencies.secrets.setApiKey(payload.apiKey, payload.providerId);
     }
     await this.pushState();
     await this.post({
@@ -225,9 +237,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     });
   }
 
-  private async testProvider(): Promise<void> {
-    const config = await this.dependencies.configs.get();
-    const apiKey = await this.dependencies.secrets.getApiKey();
+  private async testProvider(providerId: string): Promise<void> {
+    const config = await this.dependencies.configs.get(providerId);
+    const apiKey = await this.dependencies.secrets.getApiKey(providerId);
     if (!config || !apiKey) {
       throw new Error("请先保存模型配置和 API Key。");
     }
@@ -245,6 +257,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     sessionId: string,
     text: string,
     mode: ChatMode,
+    providerId: string | undefined,
     includeActiveEditor: boolean,
     includeWorkspace: boolean,
   ): Promise<void> {
@@ -275,6 +288,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         {
           text,
           mode,
+          ...(providerId ? { providerId } : {}),
           includeActiveEditor,
           includeWorkspace,
           history,
@@ -515,12 +529,15 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private async pushState(): Promise<void> {
-    const provider = await this.dependencies.configs.get();
+    const providers = await this.dependencies.configs.list();
+    const providerAssignments = this.dependencies.configs.getAssignments();
     const activeSession = await this.resolveActiveSession();
     await this.post({
       type: "state/snapshot",
       viewKind: this.kind,
-      ...(provider ? { provider } : {}),
+      ...(providers[0] ? { provider: providers[0] } : {}),
+      providers,
+      providerAssignments,
       changes: this.changeViews(this.dependencies.changes.list()),
       workspaceTrusted: vscode.workspace.isTrusted,
       sessions: this.dependencies.sessions.list(),

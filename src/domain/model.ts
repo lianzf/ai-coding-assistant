@@ -1,4 +1,5 @@
 export type ChatMode = "ask" | "plan" | "agent";
+export type ProviderAssignments = Partial<Record<ChatMode, string>>;
 
 export interface ProviderConfig {
   readonly id: string;

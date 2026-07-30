@@ -101,6 +101,7 @@ const projectTools: readonly ToolDefinition[] = [
 export interface SendChatRequest {
   readonly text: string;
   readonly mode: ChatMode;
+  readonly providerId?: string;
   readonly includeActiveEditor: boolean;
   readonly includeWorkspace: boolean;
   readonly history: readonly ChatMessage[];
@@ -152,11 +153,13 @@ export class ChatService {
     request: SendChatRequest,
     onEvent: (event: ChatExecutionEvent) => void,
   ): Promise<SendChatResult> {
-    const config = await this.configs.get();
+    const config = request.providerId
+      ? await this.configs.get(request.providerId)
+      : await this.configs.getForMode(request.mode);
     if (!config) {
       throw new Error("请先在“设置”视图保存 OpenAI Compatible 配置。");
     }
-    const apiKey = await this.secrets.getApiKey();
+    const apiKey = await this.secrets.getApiKey(config.id);
     if (!apiKey) {
       throw new Error("请先在“设置”中配置 API Key。");
     }

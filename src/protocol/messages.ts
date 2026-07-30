@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const chatModeSchema = z.enum(["ask", "plan", "agent"]);
+const providerIdSchema = z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
 
 const readySchema = z
   .object({
@@ -12,6 +13,7 @@ const readySchema = z
 const providerSaveSchema = z
   .object({
     type: z.literal("provider/save"),
+    providerId: providerIdSchema,
     displayName: z.string().trim().min(1).max(100),
     baseUrl: z.string().url().max(2048),
     modelId: z.string().trim().min(1).max(200),
@@ -23,6 +25,7 @@ const providerSaveSchema = z
 const providerKeySchema = z
   .object({
     type: z.literal("provider/set-key"),
+    providerId: providerIdSchema,
     apiKey: z.string().min(1).max(16_384),
   })
   .strict();
@@ -30,6 +33,22 @@ const providerKeySchema = z
 const providerActionSchema = z
   .object({
     type: z.enum(["provider/clear-key", "provider/test"]),
+    providerId: providerIdSchema,
+  })
+  .strict();
+
+const providerDeleteSchema = z
+  .object({
+    type: z.literal("provider/delete"),
+    providerId: providerIdSchema,
+  })
+  .strict();
+
+const providerAssignSchema = z
+  .object({
+    type: z.literal("provider/assign"),
+    mode: chatModeSchema,
+    providerId: providerIdSchema,
   })
   .strict();
 
@@ -40,6 +59,7 @@ const chatSendSchema = z
     sessionId: z.string().uuid(),
     text: z.string().trim().min(1).max(100_000),
     mode: chatModeSchema,
+    providerId: providerIdSchema.optional(),
     includeActiveEditor: z.boolean(),
     includeWorkspace: z.boolean(),
   })
@@ -123,6 +143,8 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   providerSaveSchema,
   providerKeySchema,
   providerActionSchema,
+  providerDeleteSchema,
+  providerAssignSchema,
   chatSendSchema,
   chatCancelSchema,
   sessionNewSchema,

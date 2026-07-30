@@ -46,4 +46,75 @@ describe("ProviderConfigStore", () => {
     const store = new ProviderConfigStore(state, () => Promise.resolve(false));
     expect(await store.get()).toBeUndefined();
   });
+
+  it("stores multiple providers and routes each mode independently", async () => {
+    const state = new MemoryState();
+    const keyedProviders = new Set(["deepseek"]);
+    const store = new ProviderConfigStore(state, (providerId) =>
+      Promise.resolve(keyedProviders.has(providerId)),
+    );
+
+    await store.save(
+      {
+        displayName: "DeepSeek",
+        baseUrl: "https://deepseek.example.test/v1",
+        modelId: "deepseek-chat",
+        timeoutMs: 120_000,
+      },
+      "deepseek",
+    );
+    await store.save(
+      {
+        displayName: "Local",
+        baseUrl: "http://127.0.0.1:11434/v1",
+        modelId: "qwen",
+        timeoutMs: 60_000,
+      },
+      "local",
+    );
+    await store.assign("agent", "local");
+
+    expect(await store.list()).toHaveLength(2);
+    expect((await store.get("deepseek"))?.hasApiKey).toBe(true);
+    expect((await store.getForMode("ask"))?.id).toBe("deepseek");
+    expect((await store.getForMode("agent"))?.id).toBe("local");
+    expect(store.getAssignments()).toEqual({
+      ask: "deepseek",
+      plan: "deepseek",
+      agent: "local",
+    });
+  });
+
+  it("retains the legacy default provider and reassigns modes after deletion", async () => {
+    const state = new MemoryState();
+    await state.update("aiCodingAssistant.provider.default", {
+      id: "default",
+      displayName: "Legacy",
+      baseUrl: "https://legacy.example.test/v1",
+      modelId: "legacy-model",
+      timeoutMs: 30_000,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const store = new ProviderConfigStore(state, () => Promise.resolve(true));
+
+    expect((await store.getForMode("ask"))?.id).toBe("default");
+    await store.save(
+      {
+        displayName: "Replacement",
+        baseUrl: "https://new.example.test/v1",
+        modelId: "new-model",
+        timeoutMs: 30_000,
+      },
+      "replacement",
+    );
+    await store.assign("ask", "default");
+    await store.remove("default");
+
+    expect((await store.getForMode("ask"))?.id).toBe("replacement");
+    expect(store.getAssignments()).toEqual({
+      ask: "replacement",
+      plan: "replacement",
+      agent: "replacement",
+    });
+  });
 });
