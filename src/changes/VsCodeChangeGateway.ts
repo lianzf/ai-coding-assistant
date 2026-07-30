@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import type { FileChange } from "../domain/change.js";
 import type { ChangeWorkspaceGateway } from "./ChangeManager.js";
 import type { WorkspaceService } from "../workspace/WorkspaceService.js";
+import type { PermissionGate } from "../domain/permission.js";
 
 class PreviewContentProvider implements vscode.TextDocumentContentProvider {
   private readonly values = new Map<string, string>();
@@ -33,7 +34,10 @@ export class VsCodeChangeGateway implements ChangeWorkspaceGateway, vscode.Dispo
   private readonly previews = new PreviewContentProvider();
   private readonly registration: vscode.Disposable;
 
-  public constructor(private readonly workspace: WorkspaceService) {
+  public constructor(
+    private readonly workspace: WorkspaceService,
+    private readonly permissions: PermissionGate,
+  ) {
     this.registration = vscode.workspace.registerTextDocumentContentProvider(
       "ai-coding-assistant-preview",
       this.previews,
@@ -73,6 +77,7 @@ export class VsCodeChangeGateway implements ChangeWorkspaceGateway, vscode.Dispo
   }
 
   public async apply(change: FileChange): Promise<void> {
+    this.permissions.assertAvailable("modify");
     if (!vscode.workspace.isTrusted) {
       throw new Error("当前工作区未受信任，禁止应用修改。");
     }
@@ -96,6 +101,7 @@ export class VsCodeChangeGateway implements ChangeWorkspaceGateway, vscode.Dispo
   }
 
   public async rollback(change: FileChange): Promise<void> {
+    this.permissions.assertAvailable("modify");
     if (!vscode.workspace.isTrusted) {
       throw new Error("当前工作区未受信任，禁止回滚修改。");
     }

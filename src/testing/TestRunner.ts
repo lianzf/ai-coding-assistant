@@ -2,11 +2,15 @@ import * as vscode from "vscode";
 import type { TestCommand, TestRunResult } from "../domain/testing.js";
 import { detectTestCommand, type TestProjectSnapshot } from "./TestCommandDetector.js";
 import { runTestCommand } from "./TestProcessRunner.js";
+import type { PermissionGate } from "../domain/permission.js";
 
 export class TestRunner implements vscode.Disposable {
   private readonly output = vscode.window.createOutputChannel("AI Coding Assistant Tests");
 
+  public constructor(private readonly permissions: PermissionGate) {}
+
   public async detect(): Promise<TestCommand> {
+    this.permissions.assertAvailable("command");
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       throw new Error("请先打开一个工作区。");
@@ -48,6 +52,7 @@ export class TestRunner implements vscode.Disposable {
   }
 
   public run(command: TestCommand, signal: AbortSignal): Promise<TestRunResult> {
+    this.permissions.assertAvailable("command");
     this.output.show(true);
     this.output.appendLine(`> ${command.displayCommand}`);
     this.output.appendLine(`cwd: ${command.cwd}`);

@@ -6,6 +6,7 @@ import type {
   ModelStreamEvent,
   ProviderConfig,
 } from "../domain/model.js";
+import type { PermissionGate } from "../domain/permission.js";
 
 type FetchPort = typeof fetch;
 
@@ -96,13 +97,17 @@ export class OpenAICompatibleProvider implements ModelProvider {
   public readonly id = "openai-compatible";
   public readonly displayName = "OpenAI Compatible";
 
-  public constructor(private readonly fetchImpl: FetchPort = fetch) {}
+  public constructor(
+    private readonly permissions: PermissionGate,
+    private readonly fetchImpl: FetchPort = fetch,
+  ) {}
 
   public async testConnection(
     config: ProviderConfig,
     apiKey: string,
     signal: AbortSignal,
   ): Promise<ConnectionResult> {
+    this.permissions.assertAvailable("network");
     const started = Date.now();
     const request = this.createAbort(config.timeoutMs, signal);
     try {
@@ -142,6 +147,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     apiKey: string,
     request: ModelChatRequest,
   ): AsyncIterable<ModelStreamEvent> {
+    this.permissions.assertAvailable("network");
     const abort = this.createAbort(config.timeoutMs, request.signal);
     try {
       const response = await this.fetchImpl(this.chatUrl(config.baseUrl), {

@@ -2,6 +2,9 @@ import { create } from "zustand";
 
 export type ChatMode = "ask" | "plan" | "agent";
 export type ProviderAssignments = Partial<Record<ChatMode, string>>;
+export type PermissionKind = "read" | "network" | "modify" | "command";
+export type PermissionMode = "allow" | "ask" | "deny";
+export type PermissionState = Readonly<Record<PermissionKind, PermissionMode>>;
 export type NavigationItem = "chat" | "project" | "changes";
 
 export interface ProviderView {
@@ -102,12 +105,21 @@ export interface ExecutionStep {
   readonly durationMs?: number;
 }
 
+export interface ManualContextView {
+  readonly id: string;
+  readonly kind: "directory" | "git-diff" | "terminal";
+  readonly label: string;
+  readonly characters: number;
+  readonly truncated: boolean;
+}
+
 interface AppState {
   viewKind: "chat" | "models";
   navigation: NavigationItem;
   provider: ProviderView | undefined;
   providers: readonly ProviderView[];
   providerAssignments: ProviderAssignments;
+  permissions: PermissionState;
   workspaceTrusted: boolean;
   changes: readonly ChangeView[];
   sessions: readonly SessionSummary[];
@@ -117,6 +129,7 @@ interface AppState {
   activeRequestId: string | undefined;
   requestStatus: string | undefined;
   executionSteps: readonly ExecutionStep[];
+  contexts: readonly ManualContextView[];
   notice: { readonly level: "info" | "error"; readonly message: string } | undefined;
   testRunning: boolean;
   testResult:
@@ -159,6 +172,12 @@ export const useAppStore = create<AppState>((set) => ({
   provider: undefined,
   providers: [],
   providerAssignments: {},
+  permissions: {
+    read: "allow",
+    network: "allow",
+    modify: "ask",
+    command: "ask",
+  },
   workspaceTrusted: false,
   changes: [],
   sessions: [],
@@ -168,6 +187,7 @@ export const useAppStore = create<AppState>((set) => ({
   activeRequestId: undefined,
   requestStatus: undefined,
   executionSteps: [],
+  contexts: [],
   notice: undefined,
   testRunning: false,
   testResult: undefined,
@@ -192,6 +212,17 @@ export const useAppStore = create<AppState>((set) => ({
           providerAssignments: isRecord(message.providerAssignments)
             ? message.providerAssignments
             : {},
+          permissions: isRecord(message.permissions)
+            ? (message.permissions as unknown as PermissionState)
+            : {
+                read: "allow",
+                network: "allow",
+                modify: "ask",
+                command: "ask",
+              },
+          contexts: Array.isArray(message.contexts)
+            ? (message.contexts as ManualContextView[])
+            : [],
           changes: Array.isArray(message.changes) ? (message.changes as ChangeView[]) : [],
           sessions: Array.isArray(message.sessions) ? (message.sessions as SessionSummary[]) : [],
           activeSession,
@@ -367,6 +398,13 @@ export const useAppStore = create<AppState>((set) => ({
       case "workspace/search-results":
         set({
           searchResults: Array.isArray(message.results) ? (message.results as SearchResult[]) : [],
+        });
+        break;
+      case "context/state":
+        set({
+          contexts: Array.isArray(message.contexts)
+            ? (message.contexts as ManualContextView[])
+            : [],
         });
         break;
       case "provider/test-result":

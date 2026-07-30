@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderConfig } from "../../src/domain/model.js";
+import type { PermissionGate } from "../../src/domain/permission.js";
 import { OpenAICompatibleProvider } from "../../src/providers/OpenAICompatibleProvider.js";
 
 const config: ProviderConfig = {
@@ -10,6 +11,11 @@ const config: ProviderConfig = {
   timeoutMs: 10_000,
   hasApiKey: true,
   updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const permissions: PermissionGate = {
+  get: () => ({ read: "allow", network: "allow", modify: "ask", command: "ask" }),
+  assertAvailable: () => undefined,
 };
 
 describe("OpenAICompatibleProvider", () => {
@@ -41,7 +47,7 @@ describe("OpenAICompatibleProvider", () => {
           headers: { "content-type": "text/event-stream" },
         }),
       );
-    const provider = new OpenAICompatibleProvider(fetchImpl);
+    const provider = new OpenAICompatibleProvider(permissions, fetchImpl);
     const events = [];
 
     for await (const event of provider.streamChat(config, "secret", {
@@ -96,7 +102,7 @@ describe("OpenAICompatibleProvider", () => {
         }),
       );
     };
-    const provider = new OpenAICompatibleProvider(fetchImpl);
+    const provider = new OpenAICompatibleProvider(permissions, fetchImpl);
     const events = [];
 
     for await (const event of provider.streamChat(config, "secret", {
@@ -158,7 +164,7 @@ describe("OpenAICompatibleProvider", () => {
         }),
       );
     };
-    const provider = new OpenAICompatibleProvider(fetchImpl);
+    const provider = new OpenAICompatibleProvider(permissions, fetchImpl);
     const result = await provider.testConnection(
       config,
       "top-secret",
@@ -184,7 +190,7 @@ describe("OpenAICompatibleProvider", () => {
           { status: 402 },
         ),
       );
-    const provider = new OpenAICompatibleProvider(fetchImpl);
+    const provider = new OpenAICompatibleProvider(permissions, fetchImpl);
 
     const consume = async (): Promise<void> => {
       for await (const event of provider.streamChat(config, "secret", {
@@ -198,5 +204,28 @@ describe("OpenAICompatibleProvider", () => {
 
     await expect(consume()).rejects.toThrow("模型账户余额或额度不足");
     await expect(consume()).rejects.toThrow("Insufficient Balance");
+  });
+
+  it("blocks network access at the provider boundary before fetch", async () => {
+    let called = false;
+    const provider = new OpenAICompatibleProvider(
+      {
+        get: () => ({ read: "allow", network: "deny", modify: "ask", command: "ask" }),
+        assertAvailable: (kind) => {
+          if (kind === "network") {
+            throw new Error("网络权限已关闭");
+          }
+        },
+      },
+      () => {
+        called = true;
+        return Promise.resolve(new Response(null, { status: 200 }));
+      },
+    );
+
+    await expect(
+      provider.testConnection(config, "secret", new AbortController().signal),
+    ).rejects.toThrow("网络权限已关闭");
+    expect(called).toBe(false);
   });
 });

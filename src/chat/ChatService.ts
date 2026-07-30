@@ -13,6 +13,7 @@ import type { OpenAICompatibleProvider } from "../providers/OpenAICompatibleProv
 import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
 import type { SecretManager } from "../security/SecretManager.js";
 import type { WorkspaceService } from "../workspace/WorkspaceService.js";
+import type { ContextAttachment } from "../domain/workspace.js";
 
 const maximumToolRounds = 6;
 const maximumToolOutputCharacters = 80_000;
@@ -105,6 +106,7 @@ export interface SendChatRequest {
   readonly includeActiveEditor: boolean;
   readonly includeWorkspace: boolean;
   readonly history: readonly ChatMessage[];
+  readonly extraContext?: readonly ContextAttachment[];
   readonly signal: AbortSignal;
 }
 
@@ -169,6 +171,7 @@ export class ChatService {
       request.text,
       request.includeActiveEditor,
       request.includeWorkspace,
+      request.extraContext ?? [],
     );
     const userContent =
       context.text.length > 0

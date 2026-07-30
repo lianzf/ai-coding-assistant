@@ -5,7 +5,23 @@ import type {
   WorkspaceSearchResult,
 } from "../domain/workspace.js";
 import type { ProjectOverview } from "../domain/project.js";
+import type { PermissionGate } from "../domain/permission.js";
 import { isSensitivePath } from "../security/PathPolicy.js";
+import { sanitizeGitDiff } from "../security/ContentRedactor.js";
+
+interface GitExtension {
+  readonly enabled: boolean;
+  getAPI(version: 1): GitApi;
+}
+
+interface GitApi {
+  readonly repositories: readonly GitRepository[];
+}
+
+interface GitRepository {
+  readonly rootUri: vscode.Uri;
+  diff(cached?: boolean): Promise<string>;
+}
 
 const defaultExclude = "**/{node_modules,.git,dist,build,out,coverage,.venv,venv,target,vendor}/**";
 const textDecoder = new TextDecoder("utf-8", { fatal: false });
@@ -53,6 +69,8 @@ const technologyDependencies: Readonly<Record<string, string>> = {
 };
 
 export class WorkspaceService {
+  public constructor(private readonly permissions: PermissionGate) {}
+
   public async listFiles(requestedLimit = 500): Promise<readonly string[]> {
     this.requireTrustedWorkspace();
     const limit = Math.min(Math.max(requestedLimit, 1), 1_000);
@@ -173,15 +191,76 @@ export class WorkspaceService {
     };
   }
 
+  public async createDirectoryContext(uri: vscode.Uri): Promise<ContextAttachment> {
+    this.requireTrustedWorkspace();
+    this.assertInsideWorkspace(uri);
+    const files = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(uri, "**/*"),
+      defaultExclude,
+      300,
+    );
+    const safeFiles = files
+      .filter((file) => !isSensitivePath(file.path))
+      .map((file) => vscode.workspace.asRelativePath(file, false).replaceAll("\\", "/"))
+      .sort();
+    const label = vscode.workspace.asRelativePath(uri, false).replaceAll("\\", "/");
+    return {
+      title: `目录结构：${label || uri.path.split("/").at(-1) || "工作区"}`,
+      source: uri.toString(),
+      content: safeFiles.join("\n"),
+      truncated: files.length >= 300,
+    };
+  }
+
+  public async createGitDiffContext(): Promise<ContextAttachment> {
+    this.requireTrustedWorkspace();
+    const extension = vscode.extensions.getExtension<GitExtension>("vscode.git");
+    if (!extension) {
+      throw new Error("当前 VS Code 未提供内置 Git 扩展，无法读取 Git Diff。");
+    }
+    const exports = extension.isActive ? extension.exports : await extension.activate();
+    if (!exports.enabled) {
+      throw new Error("VS Code 内置 Git 功能已禁用。");
+    }
+    const repository = exports
+      .getAPI(1)
+      .repositories.find((item) => vscode.workspace.getWorkspaceFolder(item.rootUri));
+    if (!repository) {
+      throw new Error("当前工作区未检测到 Git 仓库。");
+    }
+    const [workingTree, staged] = await Promise.all([
+      repository.diff(false),
+      repository.diff(true),
+    ]);
+    const sections = [
+      staged.trim() ? `--- 已暂存变更 ---\n${staged}` : "",
+      workingTree.trim() ? `--- 未暂存变更 ---\n${workingTree}` : "",
+    ].filter(Boolean);
+    if (sections.length === 0) {
+      throw new Error("当前 Git 仓库没有已暂存或未暂存的文本变更。");
+    }
+    const sanitized = sanitizeGitDiff(sections.join("\n\n"));
+    if (!sanitized.trim()) {
+      throw new Error("Git Diff 只包含敏感路径，已根据安全策略过滤。");
+    }
+    return {
+      title: "当前 Git Diff",
+      source: "vscode.git",
+      content: sanitized.slice(0, 100_000),
+      truncated: sanitized.length > 100_000,
+    };
+  }
+
   public async buildContext(
     prompt: string,
     includeActiveEditor: boolean,
     includeWorkspace = false,
+    extraAttachments: readonly ContextAttachment[] = [],
   ): Promise<BuiltContext> {
     if (includeActiveEditor || includeWorkspace || /@workspace\b|@file\(|@search\(/.test(prompt)) {
       this.requireTrustedWorkspace();
     }
-    const attachments: ContextAttachment[] = [];
+    const attachments: ContextAttachment[] = [...extraAttachments];
     if (includeActiveEditor) {
       const active = this.activeEditorAttachment();
       if (active) {
@@ -427,6 +506,7 @@ export class WorkspaceService {
   }
 
   private requireTrustedWorkspace(): void {
+    this.permissions.assertAvailable("read");
     if (!vscode.workspace.isTrusted) {
       throw new Error("当前工作区未受信任，已禁止读取代码。");
     }

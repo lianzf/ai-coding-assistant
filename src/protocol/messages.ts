@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 const chatModeSchema = z.enum(["ask", "plan", "agent"]);
-const providerIdSchema = z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
+const providerIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[a-zA-Z0-9_-]+$/);
 
 const readySchema = z
   .object({
@@ -52,6 +57,14 @@ const providerAssignSchema = z
   })
   .strict();
 
+const permissionUpdateSchema = z
+  .object({
+    type: z.literal("permission/update"),
+    kind: z.enum(["read", "network", "modify", "command"]),
+    mode: z.enum(["allow", "ask", "deny"]),
+  })
+  .strict();
+
 const chatSendSchema = z
   .object({
     type: z.literal("chat/send"),
@@ -62,6 +75,21 @@ const chatSendSchema = z
     providerId: providerIdSchema.optional(),
     includeActiveEditor: z.boolean(),
     includeWorkspace: z.boolean(),
+    contextIds: z.array(z.string().uuid()).max(12).optional(),
+  })
+  .strict();
+
+const contextAddSchema = z
+  .object({
+    type: z.literal("context/add"),
+    kind: z.enum(["directory", "git-diff", "terminal"]),
+  })
+  .strict();
+
+const contextRemoveSchema = z
+  .object({
+    type: z.literal("context/remove"),
+    contextId: z.string().uuid(),
   })
   .strict();
 
@@ -145,7 +173,10 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   providerActionSchema,
   providerDeleteSchema,
   providerAssignSchema,
+  permissionUpdateSchema,
   chatSendSchema,
+  contextAddSchema,
+  contextRemoveSchema,
   chatCancelSchema,
   sessionNewSchema,
   sessionSelectSchema,

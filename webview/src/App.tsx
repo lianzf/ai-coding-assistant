@@ -6,6 +6,8 @@ import {
   type ChangeView,
   type ChatItem,
   type ChatMode,
+  type PermissionKind,
+  type PermissionMode,
   type ProviderView,
 } from "./store";
 import { vscode } from "./vscode";
@@ -148,8 +150,10 @@ function ChatView(): React.JSX.Element {
   const prefill = useAppStore((state) => state.prefill);
   const consumePrefill = useAppStore((state) => state.consumePrefill);
   const workspaceTrusted = useAppStore((state) => state.workspaceTrusted);
+  const contexts = useAppStore((state) => state.contexts);
   const providers = useAppStore((state) => state.providers);
   const providerAssignments = useAppStore((state) => state.providerAssignments);
+  const permissions = useAppStore((state) => state.permissions);
   const selectedProvider =
     providers.find((provider) => provider.id === providerAssignments[mode]) ?? providers[0];
   const endRef = useRef<HTMLDivElement>(null);
@@ -183,6 +187,7 @@ function ChatView(): React.JSX.Element {
       ...(selectedProvider ? { providerId: selectedProvider.id } : {}),
       includeActiveEditor,
       includeWorkspace,
+      contextIds: contexts.map((context) => context.id),
     });
     setText("");
   };
@@ -286,6 +291,36 @@ function ChatView(): React.JSX.Element {
           </button>
           <button type="button" className="chip" onClick={() => setShowContext((value) => !value)}>
             {showContext ? "收起上下文" : "＋ 添加上下文"}
+          </button>
+          {contexts.map((context) => (
+            <button
+              key={context.id}
+              type="button"
+              className="chip active"
+              onClick={() => vscode.postMessage({ type: "context/remove", contextId: context.id })}
+              title={`${context.characters} 字符${context.truncated ? "，已截断" : ""}`}
+            >
+              {context.kind === "directory"
+                ? "目录"
+                : context.kind === "git-diff"
+                  ? "Git Diff"
+                  : "终端"}
+              ：{context.label} ×
+            </button>
+          ))}
+          <button
+            type="button"
+            className={
+              Object.values(permissions).includes("deny") ? "chip permission-denied" : "chip"
+            }
+            onClick={() => vscode.postMessage({ type: "ui/open-settings" })}
+            title="打开读取、网络、修改和命令权限设置"
+          >
+            {permissions.network === "deny"
+              ? "离线模式"
+              : Object.values(permissions).includes("deny")
+                ? "部分权限已关闭"
+                : "权限已设置"}
           </button>
         </div>
 
@@ -571,8 +606,29 @@ function ContextPanel({
   return (
     <section className="context-panel">
       <div>
-        <strong>添加项目文件</strong>
-        <span>搜索结果只来自当前受信任工作区，敏感路径会被过滤。</span>
+        <strong>添加任务上下文</strong>
+        <span>内容仅在本次发送时使用；敏感路径和常见凭据会被过滤。</span>
+      </div>
+      <div className="context-actions">
+        <button
+          type="button"
+          onClick={() => vscode.postMessage({ type: "context/add", kind: "directory" })}
+        >
+          ＋ 目录结构
+        </button>
+        <button
+          type="button"
+          onClick={() => vscode.postMessage({ type: "context/add", kind: "git-diff" })}
+        >
+          ＋ Git Diff
+        </button>
+        <button
+          type="button"
+          onClick={() => vscode.postMessage({ type: "context/add", kind: "terminal" })}
+          title="先在终端复制输出，再点击此按钮"
+        >
+          ＋ 终端输出
+        </button>
       </div>
       <div className="inline">
         <input
@@ -992,6 +1048,7 @@ function ModelsView(): React.JSX.Element {
           />
         </div>
       </div>
+      <PermissionSettings />
     </section>
   );
 }
@@ -1152,6 +1209,78 @@ function ModeAssignments({
               {providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.displayName} · {provider.modelId}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const permissionDefinitions: readonly {
+  kind: PermissionKind;
+  label: string;
+  description: string;
+}[] = [
+  {
+    kind: "read",
+    label: "工作区读取",
+    description: "读取文件、搜索代码、生成项目概览和 Agent 只读工具。",
+  },
+  {
+    kind: "network",
+    label: "模型网络访问",
+    description: "连接用户配置的模型服务；关闭后进入离线模式。",
+  },
+  {
+    kind: "modify",
+    label: "文件修改",
+    description: "应用或回滚变更；即使允许，仍必须审核 Diff 并二次确认。",
+  },
+  {
+    kind: "command",
+    label: "命令执行",
+    description: "运行检测到的测试或诊断命令；仍会显示命令并二次确认。",
+  },
+];
+
+const permissionModeLabels: Readonly<Record<PermissionMode, string>> = {
+  allow: "允许",
+  ask: "每次询问",
+  deny: "关闭",
+};
+
+function PermissionSettings(): React.JSX.Element {
+  const permissions = useAppStore((state) => state.permissions);
+  return (
+    <section className="permission-settings">
+      <div>
+        <h2>权限与离线模式</h2>
+        <p>四类能力独立控制。工作区信任、敏感路径、Diff 审核和命令确认仍会继续生效。</p>
+      </div>
+      <div className="permission-grid">
+        {permissionDefinitions.map((permission) => (
+          <label key={permission.kind}>
+            <span>
+              <strong>{permission.label}</strong>
+              <small>{permission.description}</small>
+            </span>
+            <select
+              value={permissions[permission.kind]}
+              onChange={(event) =>
+                vscode.postMessage({
+                  type: "permission/update",
+                  kind: permission.kind,
+                  mode: event.target.value as PermissionMode,
+                })
+              }
+              aria-label={`${permission.label}权限`}
+            >
+              {(Object.keys(permissionModeLabels) as PermissionMode[]).map((mode) => (
+                <option key={mode} value={mode}>
+                  {permissionModeLabels[mode]}
                 </option>
               ))}
             </select>

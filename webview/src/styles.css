@@ -677,6 +677,12 @@ h3 {
   background: var(--vscode-list-inactiveSelectionBackground);
 }
 
+.chip.permission-denied {
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  border-color: var(--vscode-inputValidation-warningBorder);
+  background: var(--vscode-inputValidation-warningBackground);
+}
+
 .composer-footer {
   justify-content: space-between;
   gap: 8px;
@@ -711,6 +717,17 @@ h3 {
 .context-panel > div:first-child span {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.context-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.context-actions button {
+  min-height: 25px;
+  padding-block: 3px;
 }
 
 .inline {
@@ -1050,6 +1067,55 @@ h3 {
   border-radius: 7px;
 }
 
+.permission-settings {
+  margin-top: 14px;
+  padding: 11px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.permission-settings > div:first-child p {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.permission-grid label {
+  display: flex;
+  min-width: 0;
+  padding: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--vscode-textBlockQuote-background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.permission-grid label > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.permission-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.permission-grid select {
+  width: 112px;
+  flex: 0 0 auto;
+}
+
 .mode-assignments h2 {
   margin-bottom: 3px;
 }
@@ -1150,8 +1216,17 @@ h3 {
 
 @media (max-width: 620px) {
   .model-settings-layout,
-  .assignment-grid {
+  .assignment-grid,
+  .permission-grid {
     grid-template-columns: 1fr;
+  }
+
+  .permission-grid label {
+    flex-direction: column;
+  }
+
+  .permission-grid select {
+    width: 100%;
   }
 
   .provider-list {

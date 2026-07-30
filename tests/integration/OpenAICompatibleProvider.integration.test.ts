@@ -1,9 +1,14 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProviderConfig } from "../../src/domain/model.js";
+import type { PermissionGate } from "../../src/domain/permission.js";
 import { OpenAICompatibleProvider } from "../../src/providers/OpenAICompatibleProvider.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
+const permissions: PermissionGate = {
+  get: () => ({ read: "allow", network: "allow", modify: "ask", command: "ask" }),
+  assertAvailable: () => undefined,
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -54,7 +59,7 @@ describe("OpenAICompatibleProvider HTTP integration", () => {
       hasApiKey: true,
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
-    const provider = new OpenAICompatibleProvider();
+    const provider = new OpenAICompatibleProvider(permissions);
     const events = [];
     for await (const event of provider.streamChat(config, "local-secret", {
       model: config.modelId,

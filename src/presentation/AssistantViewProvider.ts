@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import type { ChatMode } from "../domain/model.js";
+import type { PermissionKind } from "../domain/permission.js";
 import type { FileChange } from "../domain/change.js";
 import { inboundMessageSchema, type InboundMessage } from "../protocol/messages.js";
 import type { ChatService } from "../chat/ChatService.js";
@@ -9,11 +10,19 @@ import type { ChangeManager } from "../changes/ChangeManager.js";
 import type { OpenAICompatibleProvider } from "../providers/OpenAICompatibleProvider.js";
 import type { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
 import type { SecretManager } from "../security/SecretManager.js";
+import type { PermissionStore } from "../security/PermissionStore.js";
 import type { TestRunner } from "../testing/TestRunner.js";
 import type { WorkspaceService } from "../workspace/WorkspaceService.js";
+import type { ContextAttachment } from "../domain/workspace.js";
+import { redactPotentialSecrets } from "../security/ContentRedactor.js";
 import { toProviderSavePayload, type ProviderSaveMessage } from "./providerSavePayload.js";
 
 export type ViewKind = "chat" | "models";
+
+interface ManualContext extends ContextAttachment {
+  readonly id: string;
+  readonly kind: "directory" | "git-diff" | "terminal";
+}
 
 export interface AssistantViewDependencies {
   readonly extensionUri: vscode.Uri;
@@ -21,6 +30,7 @@ export interface AssistantViewDependencies {
   readonly sessions: ChatSessionStore;
   readonly configs: ProviderConfigStore;
   readonly secrets: SecretManager;
+  readonly permissions: PermissionStore;
   readonly provider: OpenAICompatibleProvider;
   readonly workspace: WorkspaceService;
   readonly changes: ChangeManager;
@@ -31,6 +41,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   private view: vscode.WebviewView | undefined;
   private pendingPrefill: { readonly text: string; readonly mode: ChatMode } | undefined;
   private activeSessionId: string | undefined;
+  private readonly manualContexts = new Map<string, ManualContext>();
   private readonly requests = new Map<string, AbortController>();
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -48,6 +59,11 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         }
       }),
       dependencies.secrets.onDidChange(() => {
+        if (this.view) {
+          void this.pushState();
+        }
+      }),
+      dependencies.permissions.onDidChange(() => {
         if (this.view) {
           void this.pushState();
         }
@@ -153,6 +169,11 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await this.pushState();
         await this.post({ type: "ui/info", message: "默认模型分配已更新。" });
         return;
+      case "permission/update":
+        await this.dependencies.permissions.update(message.kind, message.mode);
+        await this.pushState();
+        await this.post({ type: "ui/info", message: "权限设置已更新。" });
+        return;
       case "session/new": {
         const session = await this.dependencies.sessions.create();
         this.activeSessionId = session.id;
@@ -178,13 +199,24 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await this.dependencies.sessions.rename(message.sessionId, message.title);
         await this.postSessionState();
         return;
+      case "context/add":
+        await this.addContext(message.kind);
+        return;
+      case "context/remove":
+        this.manualContexts.delete(message.contextId);
+        await this.postContextState();
+        return;
       case "chat/send":
+        if (!(await this.ensureChatPermissions(message))) {
+          return;
+        }
         await this.beginChat(
           message.requestId,
           message.sessionId,
           message.text,
           message.mode,
           message.providerId,
+          message.contextIds ?? [],
           message.includeActiveEditor,
           message.includeWorkspace,
         );
@@ -193,9 +225,15 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         this.requests.get(message.requestId)?.abort();
         return;
       case "workspace/search":
+        if (!(await this.confirmPermission("read", "搜索当前工作区中的代码"))) {
+          return;
+        }
         await this.search(message.query);
         return;
       case "change/preview":
+        if (!(await this.confirmPermission("read", "读取文件并打开变更 Diff"))) {
+          return;
+        }
         await this.dependencies.changes.preview(message.changeId);
         return;
       case "change/apply":
@@ -221,6 +259,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         await this.confirmAndRunTests();
         return;
       case "project/analyze": {
+        if (!(await this.confirmPermission("read", "扫描并分析当前项目"))) {
+          return;
+        }
         await this.post({ type: "project/analyzing" });
         const overview = await this.dependencies.workspace.analyzeProject();
         await this.post({ type: "project/result", overview });
@@ -248,6 +289,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private async testProvider(providerId: string): Promise<void> {
+    if (!(await this.confirmPermission("network", "连接所选模型服务"))) {
+      return;
+    }
     const config = await this.dependencies.configs.get(providerId);
     const apiKey = await this.dependencies.secrets.getApiKey(providerId);
     if (!config || !apiKey) {
@@ -268,6 +312,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     text: string,
     mode: ChatMode,
     providerId: string | undefined,
+    contextIds: readonly string[],
     includeActiveEditor: boolean,
     includeWorkspace: boolean,
   ): Promise<void> {
@@ -282,6 +327,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       role: message.role,
       content: message.text,
     }));
+    const extraContext = contextIds
+      .map((id) => this.manualContexts.get(id))
+      .filter((context): context is ManualContext => context !== undefined);
     const userMessage = await this.dependencies.sessions.appendUser(sessionId, text, mode);
     this.activeSessionId = sessionId;
     const controller = new AbortController();
@@ -293,6 +341,10 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       userMessage,
       sessions: this.dependencies.sessions.list(),
     });
+    for (const context of extraContext) {
+      this.manualContexts.delete(context.id);
+    }
+    await this.postContextState();
     try {
       const result = await this.dependencies.chat.send(
         {
@@ -302,6 +354,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
           includeActiveEditor,
           includeWorkspace,
           history,
+          extraContext,
           signal: controller.signal,
         },
         (event) => {
@@ -369,6 +422,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   public async confirmAndApply(changeId: string): Promise<void> {
+    this.dependencies.permissions.assertAvailable("modify");
     const change = this.dependencies.changes.get(changeId);
     await this.dependencies.changes.preview(changeId);
     const choice = await vscode.window.showWarningMessage(
@@ -393,6 +447,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   public async confirmAndApplyAll(): Promise<void> {
+    this.dependencies.permissions.assertAvailable("modify");
     const pending = this.dependencies.changes.latestPendingGroup();
     if (pending.length === 0) {
       await this.post({ type: "ui/info", message: "当前没有待审核修改。" });
@@ -454,6 +509,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   public async confirmAndRollback(changeId: string): Promise<void> {
+    this.dependencies.permissions.assertAvailable("modify");
     const change = this.dependencies.changes.get(changeId);
     const choice = await vscode.window.showWarningMessage(
       [
@@ -474,6 +530,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   public async confirmAndRollbackLatest(): Promise<void> {
+    this.dependencies.permissions.assertAvailable("modify");
     const checkpoint = this.dependencies.changes.latestAppliedGroup();
     if (checkpoint.length === 0) {
       await this.post({ type: "ui/info", message: "当前没有可回滚的任务检查点。" });
@@ -511,6 +568,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   public async confirmAndRunTests(): Promise<void> {
+    this.dependencies.permissions.assertAvailable("command");
     const command = await this.dependencies.tests.detect();
     const choice = await vscode.window.showWarningMessage(
       [
@@ -548,6 +606,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       ...(providers[0] ? { provider: providers[0] } : {}),
       providers,
       providerAssignments,
+      permissions: this.dependencies.permissions.get(),
+      contexts: this.contextViews(),
       changes: this.changeViews(this.dependencies.changes.list()),
       workspaceTrusted: vscode.workspace.isTrusted,
       sessions: this.dependencies.sessions.list(),
@@ -562,6 +622,10 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       sessions: this.dependencies.sessions.list(),
       activeSession,
     });
+  }
+
+  private async postContextState(): Promise<void> {
+    await this.post({ type: "context/state", contexts: this.contextViews() });
   }
 
   private async resolveActiveSession() {
@@ -586,6 +650,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       deletedLines: change.deletedLines,
       rolledBackAt: change.rolledBackAt ?? "",
       error: change.error ?? "",
+    }));
+  }
+
+  private contextViews(): readonly object[] {
+    return [...this.manualContexts.values()].map((context) => ({
+      id: context.id,
+      kind: context.kind,
+      label: context.title,
+      characters: context.content.length,
+      truncated: context.truncated,
     }));
   }
 
@@ -635,5 +709,96 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private async ensureChatPermissions(
+    message: Extract<InboundMessage, { type: "chat/send" }>,
+  ): Promise<boolean> {
+    const requiresRead =
+      message.mode !== "ask" ||
+      message.includeActiveEditor ||
+      message.includeWorkspace ||
+      (message.contextIds ?? []).some((id) => this.manualContexts.get(id)?.kind !== "terminal") ||
+      /@workspace\b|@file\(|@search\(/.test(message.text);
+    if (requiresRead && !(await this.confirmPermission("read", "读取任务所需的项目上下文"))) {
+      return false;
+    }
+    return await this.confirmPermission("network", "向所选模型服务发送本次请求");
+  }
+
+  private async confirmPermission(kind: PermissionKind, operation: string): Promise<boolean> {
+    this.dependencies.permissions.assertAvailable(kind);
+    if (this.dependencies.permissions.get()[kind] !== "ask") {
+      return true;
+    }
+    const labels: Readonly<Record<PermissionKind, string>> = {
+      read: "工作区读取",
+      network: "模型网络访问",
+      modify: "文件修改",
+      command: "命令执行",
+    };
+    const choice = await vscode.window.showWarningMessage(
+      [`AI Coding Assistant 请求“${labels[kind]}”权限。`, `本次用途：${operation}`].join("\n"),
+      { modal: true },
+      "允许本次",
+      "始终允许",
+    );
+    if (choice === "始终允许") {
+      await this.dependencies.permissions.update(kind, "allow");
+      return true;
+    }
+    return choice === "允许本次";
+  }
+
+  private async addContext(kind: ManualContext["kind"]): Promise<void> {
+    if (this.manualContexts.size >= 12) {
+      throw new Error("单次任务最多添加 12 个可视化上下文。");
+    }
+    let attachment: ContextAttachment | undefined;
+    if (kind === "directory") {
+      if (!(await this.confirmPermission("read", "选择并读取一个工作区目录结构"))) {
+        return;
+      }
+      const selected = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        ...(vscode.workspace.workspaceFolders?.[0]?.uri
+          ? { defaultUri: vscode.workspace.workspaceFolders[0].uri }
+          : {}),
+        openLabel: "添加目录上下文",
+        title: "选择工作区内目录",
+      });
+      const uri = selected?.[0];
+      if (!uri) {
+        return;
+      }
+      attachment = await this.dependencies.workspace.createDirectoryContext(uri);
+    } else if (kind === "git-diff") {
+      if (!(await this.confirmPermission("read", "读取当前仓库的 Git Diff"))) {
+        return;
+      }
+      attachment = await this.dependencies.workspace.createGitDiffContext();
+    } else {
+      const clipboard = await vscode.env.clipboard.readText();
+      if (!clipboard.trim()) {
+        throw new Error("剪贴板为空。请先在终端中复制需要分析的输出。");
+      }
+      const sanitized = redactPotentialSecrets(clipboard);
+      attachment = {
+        title: "终端输出（来自剪贴板）",
+        source: "clipboard:terminal",
+        content: sanitized.slice(0, 80_000),
+        truncated: sanitized.length > 80_000,
+      };
+    }
+    const context: ManualContext = {
+      ...attachment,
+      id: randomUUID(),
+      kind,
+    };
+    this.manualContexts.set(context.id, context);
+    await this.postContextState();
+    await this.post({ type: "ui/info", message: `已添加上下文：${context.title}` });
   }
 }

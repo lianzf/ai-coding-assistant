@@ -12,6 +12,7 @@ describe("Webview protocol", () => {
       providerId: "provider-a",
       includeActiveEditor: true,
       includeWorkspace: false,
+      contextIds: ["5c69fda2-a042-4b42-9e52-c6a49faf1ea8"],
     });
     expect(result.success).toBe(true);
   });
@@ -74,6 +75,44 @@ describe("Webview protocol", () => {
         changeId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
       }).success,
     ).toBe(true);
+  });
+
+  it("accepts only the four declared permission updates", () => {
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "permission/update",
+        kind: "network",
+        mode: "deny",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "permission/update",
+        kind: "terminal-root",
+        mode: "allow",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts bounded visual context actions", () => {
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "context/add",
+        kind: "git-diff",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "context/remove",
+        contextId: "5c69fda2-a042-4b42-9e52-c6a49faf1ea8",
+      }).success,
+    ).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "context/add",
+        kind: "clipboard-anything",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects unknown fields on security-sensitive messages", () => {

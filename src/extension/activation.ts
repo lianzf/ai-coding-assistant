@@ -8,20 +8,22 @@ import { registerCommands } from "../presentation/registerCommands.js";
 import { OpenAICompatibleProvider } from "../providers/OpenAICompatibleProvider.js";
 import { ProviderConfigStore } from "../providers/ProviderConfigStore.js";
 import { SecretManager } from "../security/SecretManager.js";
+import { PermissionStore } from "../security/PermissionStore.js";
 import { TestRunner } from "../testing/TestRunner.js";
 import { WorkspaceService } from "../workspace/WorkspaceService.js";
 
 export function activateExtension(context: vscode.ExtensionContext): void {
   const secrets = new SecretManager(context.secrets);
+  const permissions = new PermissionStore(context.workspaceState);
   const configs = new ProviderConfigStore(context.globalState, (providerId) =>
     secrets.hasApiKey(providerId),
   );
-  const provider = new OpenAICompatibleProvider();
-  const workspace = new WorkspaceService();
+  const provider = new OpenAICompatibleProvider(permissions);
+  const workspace = new WorkspaceService(permissions);
   const sessions = new ChatSessionStore(context.workspaceState);
-  const changeGateway = new VsCodeChangeGateway(workspace);
+  const changeGateway = new VsCodeChangeGateway(workspace, permissions);
   const changes = new ChangeManager(changeGateway);
-  const tests = new TestRunner();
+  const tests = new TestRunner(permissions);
   const chat = new ChatService(configs, secrets, provider, workspace, changes);
   const shared = {
     extensionUri: context.extensionUri,
@@ -29,6 +31,7 @@ export function activateExtension(context: vscode.ExtensionContext): void {
     sessions,
     configs,
     secrets,
+    permissions,
     provider,
     workspace,
     changes,
