@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.2.x`。
+本文档适用于 AI Coding Assistant `0.3.x`。
 
 插件标识：
 
@@ -49,9 +49,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.2.0.vsix
-ai-coding-assistant-0.2.0.vsix.sha256
-ai-coding-assistant-0.2.0.metadata.json
+ai-coding-assistant-0.3.0.vsix
+ai-coding-assistant-0.3.0.vsix.sha256
+ai-coding-assistant-0.3.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -59,15 +59,15 @@ ai-coding-assistant-0.2.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.2.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.2.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.3.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.3.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.2.0.vsix
-cat ai-coding-assistant-0.2.0.vsix.sha256
+sha256sum ai-coding-assistant-0.3.0.vsix
+cat ai-coding-assistant-0.3.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -80,13 +80,13 @@ cat ai-coding-assistant-0.2.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.2.0.vsix`。
+5. 选择 `ai-coding-assistant-0.3.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.2.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.3.0.vsix --force
 ```
 
 检查安装结果：
@@ -99,13 +99,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.2.0
+local-project.ai-coding-assistant@0.3.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.2.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.3.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -240,6 +240,17 @@ Model ID：deepseek-v4-pro
 - 没有选区时，发送当前活动文件内容；
 - 敏感路径命中安全策略时，插件会拒绝发送。
 
+### 7.5 Agent 项目工具与执行时间线
+
+“规划”和“执行”模式可以由模型按需调用以下只读工具：
+
+- 列出经过安全过滤的工作区文件；
+- 搜索工作区文本；
+- 读取指定工作区相对路径文件；
+- 获取本地项目概览。
+
+工具调用最多连续执行六轮。每一步都会在输入区上方的执行时间线中显示工具名称、目标、成功或失败状态、结果摘要和耗时。工具仍受工作区信任、敏感路径和最大内容长度限制，不允许直接写入文件或执行任意终端命令。
+
 ## 8. 添加工作区上下文
 
 优先使用输入区的可视化上下文标签：
@@ -351,9 +362,27 @@ Model ID：deepseek-v4-pro
 
 如果文件在生成建议后被其他操作修改，插件会比较原始内容的 SHA-256，并阻止覆盖。
 
+同一个模型回答产生的多个文件属于同一个任务检查点。变更中心还提供：
+
+- “全部审核并应用”：一次确认后应用当前任务的全部待审核文件；
+- “全部拒绝”：拒绝当前任务的全部待审核文件；
+- 新增和删除行数统计。
+
 ### 9.4 拒绝修改
 
 点击“拒绝”后，该 ChangeSet 不会应用到工作区。
+
+### 9.5 检查点与安全回滚
+
+每个已应用文件都保留应用前内容和应用后 SHA-256：
+
+- “回滚此文件”只恢复指定文件；
+- “回滚最近检查点”按任务恢复最近一组已应用文件；
+- 新建文件回滚时会删除该 AI 创建的文件；
+- 更新文件回滚时会恢复应用前内容；
+- 如果文件在应用后又被用户或其他工具修改，哈希校验会阻止自动回滚，避免覆盖后续内容。
+
+所有回滚操作都需要在 Extension Host 的模态确认框中再次确认。
 
 ## 10. 生成单元测试
 

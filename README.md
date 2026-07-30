@@ -1,14 +1,17 @@
 # AI Coding Assistant
 
-AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.2 版本提供三种清晰工作模式、持久化多轮会话、本地项目概览、可视化上下文、Markdown 对话、集中变更审核和受控测试执行。
+AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.3 版本提供三种清晰工作模式、持久化多轮会话、项目工具调用、本地项目概览、Agent 执行时间线、任务检查点、安全回滚和受控测试执行。
 
 ## 主要能力
 
 - **问答、规划、执行三模式**：只读咨询、只读方案和可审核修改边界明确。
 - **多轮会话**：按工作区保存历史对话，支持新建、切换、重命名和删除。
 - **项目概览**：本地识别语言、技术栈、模块、入口、配置、脚本和测试文件。
+- **项目工具调用**：规划/执行模式可安全列出、搜索和读取工作区内容，最多执行六轮。
+- **执行时间线**：展示工具名称、输入、执行状态、摘要和耗时。
 - **可视化上下文**：一键附加当前文件/选区或项目结构，也可搜索并引用具体文件。
 - **安全变更**：AI 修改先进入变更中心，再查看 VS Code 原生 Diff 并明确批准。
+- **任务检查点**：支持批量接受、拒绝和回滚；文件有后续编辑时自动阻止覆盖。
 - **模型自备**：连接 OpenAI Compatible、本地或企业内网模型服务。
 - **国产化与离线交付**：提供通用 VSIX，不依赖 CDN 或插件原生 Node Addon。
 
@@ -27,7 +30,7 @@ AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS
 要求 VS Code 1.96 或更高版本。
 
 ```powershell
-code --install-extension .\artifacts\ai-coding-assistant-0.2.0.vsix --force
+code --install-extension .\artifacts\ai-coding-assistant-0.3.0.vsix --force
 ```
 
 离线和银河麒麟说明见 [OFFLINE-INSTALL.zh-CN.md](OFFLINE-INSTALL.zh-CN.md)，完整操作说明见 [USER-GUIDE.zh-CN.md](USER-GUIDE.zh-CN.md)。
@@ -54,7 +57,7 @@ POST <baseUrl>/chat/completions
 
 - **对话**：管理历史会话，在问答、规划、执行之间切换。
 - **项目**：本地生成项目画像，不自动把扫描结果发送到模型。
-- **变更**：集中查看修改状态、打开 Diff、批准/拒绝和运行测试。
+- **变更**：查看行数统计、打开 Diff、批量批准/拒绝、运行测试和安全回滚。
 
 输入区可选择：
 
