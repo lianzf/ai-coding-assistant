@@ -2,7 +2,7 @@
   "name": "ai-coding-assistant",
   "displayName": "AI Coding Assistant",
   "description": "面向项目理解、任务规划和安全变更审核的本地优先 VS Code AI 编程助手。",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "local-project",
   "license": "MIT",
   "private": true,

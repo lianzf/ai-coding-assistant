@@ -17,13 +17,13 @@ VSIX 已包含 React Webview、Extension Host 代码、样式和图标，运行�
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.4.0.vsix -Algorithm SHA256
+Get-FileHash .\ai-coding-assistant-0.5.0.vsix -Algorithm SHA256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.4.0.vsix
+sha256sum ai-coding-assistant-0.5.0.vsix
 ```
 
 结果必须与 `.sha256` 文件一致。
@@ -31,7 +31,7 @@ sha256sum ai-coding-assistant-0.4.0.vsix
 ## 安装与升级
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.4.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.5.0.vsix --force
 ```
 
 也可以在 VS Code 的 Extensions 视图中选择“从 VSIX 安装”。
@@ -61,3 +61,5 @@ code --install-extension ./ai-coding-assistant-previous.vsix --force
 远程 OpenAI Compatible 服务在完全断网时不可使用。可以配置网络可达的企业内网兼容服务；本插件不会自动寻找或下载模型。
 
 没有模型连接时，插件仍可安装、激活和显示本地 UI，但模型对话、修改生成和测试生成不可用。
+
+也可以在“设置 → 权限与离线模式”中把“模型网络访问”设为“关闭”。此时插件会在模型 Provider 边界阻止外部请求，本地项目概览、会话、Diff 审核等能力仍可使用。
