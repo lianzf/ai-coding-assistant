@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.7.x`。
+本文档适用于 AI Coding Assistant `0.8.x`。
 
 插件标识：
 
@@ -15,6 +15,8 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 - 配置多个用户自备的 OpenAI Compatible 模型并按工作模式路由；
 - 使用 VS Code SecretStorage 保存 API Key；
 - 流式 AI 对话；
+- 对最近一条 AI 回复进行安全重新生成；
+- 本地高亮、复制和送审 AI 代码块；
 - 读取当前文件、选区和工作区代码；
 - 搜索工作区文本；
 - 生成代码修改并使用 VS Code 原生 Diff 审核；
@@ -50,9 +52,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.7.0.vsix
-ai-coding-assistant-0.7.0.vsix.sha256
-ai-coding-assistant-0.7.0.metadata.json
+ai-coding-assistant-0.8.0.vsix
+ai-coding-assistant-0.8.0.vsix.sha256
+ai-coding-assistant-0.8.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -60,15 +62,15 @@ ai-coding-assistant-0.7.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.7.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.7.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.8.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.8.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.7.0.vsix
-cat ai-coding-assistant-0.7.0.vsix.sha256
+sha256sum ai-coding-assistant-0.8.0.vsix
+cat ai-coding-assistant-0.8.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -81,13 +83,13 @@ cat ai-coding-assistant-0.7.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.7.0.vsix`。
+5. 选择 `ai-coding-assistant-0.8.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.7.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.8.0.vsix --force
 ```
 
 检查安装结果：
@@ -100,13 +102,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.7.0
+local-project.ai-coding-assistant@0.8.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.7.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.8.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -123,7 +125,7 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 
 升级后必须重新加载 VS Code 窗口。
 
-从 `0.3.x`、`0.4.x`、`0.5.x` 或 `0.6.x` 升级到 `0.7.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。
+从 `0.3.x` 至 `0.7.x` 升级到 `0.8.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。
 
 ### 4.5 卸载
 
@@ -250,7 +252,9 @@ Model ID：deepseek-v4-pro
 4. 输入问题或任务。
 5. 按 `Enter` 或点击“发送”；`Shift+Enter` 用于换行。
 
-模型响应会以流式 Markdown 逐步显示。代码块、表格和列表会格式化显示；消息支持复制和再次使用。生成过程中可以点击“停止生成”取消当前请求。
+模型响应会以流式 Markdown 逐步显示。代码块、表格和列表会格式化显示；消息支持复制和再次使用。最近一条已完成的 AI 回复还支持“重新生成”：插件会复用对应的用户问题和当前选中的文件/项目上下文，但不会把被放弃的 AI 回答加入新请求历史。生成过程中可以点击“停止生成”取消当前请求。
+
+代码块使用插件内置词法高亮，不加载 CDN、字体或外部脚本。每个代码块都可以单独复制；AI 代码块还可以送入变更中心审核。
 
 ### 7.3 确认规划并执行
 
@@ -398,7 +402,19 @@ Model ID：deepseek-v4-pro
 
 插件不接受 `delete` 或 `rename`。
 
-### 9.2 查看 Diff
+### 9.2 将回复代码块送入变更中心
+
+如果 AI 回复中的某个代码块适合当前文件：
+
+1. 在编辑器中打开目标工作区文件；
+2. 选择需要替换的范围；如果没有选区，则把光标放在插入位置；
+3. 点击代码块右上角的“送入变更中心”；
+4. 插件读取当前编辑器内容，在内存中生成完整文件候选版本；
+5. 页面自动切换到“变更”，之后按常规流程查看 Diff、批准或拒绝。
+
+该操作只生成 `update` 候选变更，不会直接修改编辑器。当前文件必须位于受信任工作区内，敏感路径会被拒绝，代码片段最多 20 万字符，文件最多 200 万字符。文件在送审后继续变化时，SHA-256 冲突检查仍会阻止覆盖。
+
+### 9.3 查看 Diff
 
 模型返回有效修改后，“变更”入口会显示文件路径、操作类型、状态和原因。
 
@@ -407,7 +423,7 @@ Model ID：deepseek-v4-pro
 - 左侧为原始内容；
 - 右侧为 AI 建议内容。
 
-### 9.3 批准并应用
+### 9.4 批准并应用
 
 1. 完整检查 Diff。
 2. 点击“审核并应用”。
@@ -423,11 +439,11 @@ Model ID：deepseek-v4-pro
 - “全部拒绝”：拒绝当前任务的全部待审核文件；
 - 新增和删除行数统计。
 
-### 9.4 拒绝修改
+### 9.5 拒绝修改
 
 点击“拒绝”后，该 ChangeSet 不会应用到工作区。
 
-### 9.5 检查点与安全回滚
+### 9.6 检查点与安全回滚
 
 每个已应用文件都保留应用前内容和应用后 SHA-256：
 
@@ -660,6 +676,9 @@ AI Coding Assistant：运行单元测试
 - [ ] 密钥状态显示“已安全配置”；
 - [ ] 测试连接成功；
 - [ ] 流式对话可以正常返回；
+- [ ] 最近一条 AI 回复可以重新生成；
+- [ ] 代码块可以复制并送入变更中心；
+- [ ] 规划回复可以确认后切换到执行模式；
 - [ ] 当前文件/选区可以作为上下文；
 - [ ] 工作区搜索可以返回结果；
 - [ ] 项目概览包含依赖、Git 状态、风险和阅读建议；
