@@ -95,6 +95,31 @@ export class VsCodeChangeGateway implements ChangeWorkspaceGateway, vscode.Dispo
     }
   }
 
+  public async rollback(change: FileChange): Promise<void> {
+    if (!vscode.workspace.isTrusted) {
+      throw new Error("当前工作区未受信任，禁止回滚修改。");
+    }
+    const target = this.workspace.resolveRelativePath(change.path);
+    const edit = new vscode.WorkspaceEdit();
+    if (change.operation === "create") {
+      edit.deleteFile(target, { ignoreIfNotExists: false, recursive: false });
+    } else {
+      if (change.originalContent === undefined) {
+        throw new Error("检查点缺少原始文件内容，无法安全回滚。");
+      }
+      const document = await vscode.workspace.openTextDocument(target);
+      const fullRange = new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length),
+      );
+      edit.replace(target, fullRange, change.originalContent);
+    }
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      throw new Error("VS Code 拒绝了检查点回滚操作。");
+    }
+  }
+
   public dispose(): void {
     this.registration.dispose();
     this.previews.dispose();

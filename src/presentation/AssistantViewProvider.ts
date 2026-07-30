@@ -183,6 +183,18 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         this.dependencies.changes.reject(message.changeId);
         await this.post({ type: "ui/info", message: "已拒绝该修改。" });
         return;
+      case "change/rollback":
+        await this.confirmAndRollback(message.changeId);
+        return;
+      case "change/apply-all":
+        await this.confirmAndApplyAll();
+        return;
+      case "change/reject-all":
+        await this.confirmAndRejectAll();
+        return;
+      case "change/rollback-latest":
+        await this.confirmAndRollbackLatest();
+        return;
       case "test/run":
         await this.confirmAndRunTests();
         return;
@@ -356,6 +368,124 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     }
   }
 
+  public async confirmAndApplyAll(): Promise<void> {
+    const pending = this.dependencies.changes.latestPendingGroup();
+    if (pending.length === 0) {
+      await this.post({ type: "ui/info", message: "当前没有待审核修改。" });
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      [
+        `确认批量应用 ${pending.length} 个 AI 修改？`,
+        "请确保已经逐文件检查变更中心中的 Diff。",
+        ...pending.slice(0, 12).map((change) => `• ${change.path}`),
+        pending.length > 12 ? `• 以及另外 ${pending.length - 12} 个文件` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      { modal: true },
+      "全部批准并应用",
+    );
+    if (choice !== "全部批准并应用") {
+      return;
+    }
+    let applied = 0;
+    const failed: string[] = [];
+    for (const change of pending) {
+      this.dependencies.changes.approve(change.id);
+      const result = await this.dependencies.changes.apply(change.id);
+      if (result.status === "applied") {
+        applied += 1;
+      } else {
+        failed.push(result.path);
+      }
+    }
+    await this.post({
+      type: failed.length === 0 ? "ui/info" : "ui/error",
+      message:
+        failed.length === 0
+          ? `已应用 ${applied} 个修改，并创建可回滚检查点。`
+          : `已应用 ${applied} 个修改；${failed.length} 个文件因冲突或错误未应用：${failed.join("、")}`,
+    });
+  }
+
+  public async confirmAndRejectAll(): Promise<void> {
+    const pending = this.dependencies.changes.latestPendingGroup();
+    if (pending.length === 0) {
+      await this.post({ type: "ui/info", message: "当前没有待审核修改。" });
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `确认拒绝当前任务的 ${pending.length} 个待审核修改？`,
+      { modal: true },
+      "全部拒绝",
+    );
+    if (choice !== "全部拒绝") {
+      return;
+    }
+    for (const change of pending) {
+      this.dependencies.changes.reject(change.id);
+    }
+    await this.post({ type: "ui/info", message: `已拒绝 ${pending.length} 个修改。` });
+  }
+
+  public async confirmAndRollback(changeId: string): Promise<void> {
+    const change = this.dependencies.changes.get(changeId);
+    const choice = await vscode.window.showWarningMessage(
+      [
+        `确认将 ${change.path} 恢复到 AI 修改前的检查点？`,
+        "如果文件在应用后又被修改，安全校验会阻止回滚。",
+      ].join("\n"),
+      { modal: true },
+      "确认回滚",
+    );
+    if (choice !== "确认回滚") {
+      return;
+    }
+    const result = await this.dependencies.changes.rollback(changeId);
+    if (result.status !== "rolled-back") {
+      throw new Error(result.error ?? "回滚修改失败。");
+    }
+    await this.post({ type: "ui/info", message: `已恢复 ${result.path}。` });
+  }
+
+  public async confirmAndRollbackLatest(): Promise<void> {
+    const checkpoint = this.dependencies.changes.latestAppliedGroup();
+    if (checkpoint.length === 0) {
+      await this.post({ type: "ui/info", message: "当前没有可回滚的任务检查点。" });
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      [
+        `确认回滚最近任务检查点中的 ${checkpoint.length} 个文件？`,
+        "只有内容仍与 AI 应用结果一致的文件才会恢复，用户后续修改不会被覆盖。",
+        ...checkpoint.slice(0, 12).map((change) => `• ${change.path}`),
+      ].join("\n"),
+      { modal: true },
+      "回滚最近检查点",
+    );
+    if (choice !== "回滚最近检查点") {
+      return;
+    }
+    let restored = 0;
+    const blocked: string[] = [];
+    for (const change of [...checkpoint].reverse()) {
+      const result = await this.dependencies.changes.rollback(change.id);
+      if (result.status === "rolled-back") {
+        restored += 1;
+      } else {
+        blocked.push(result.path);
+      }
+    }
+    await this.post({
+      type: blocked.length === 0 ? "ui/info" : "ui/error",
+      message:
+        blocked.length === 0
+          ? `已安全回滚 ${restored} 个文件。`
+          : `已回滚 ${restored} 个文件；${blocked.length} 个文件因后续内容变化而保留：${blocked.join("、")}`,
+    });
+  }
+
   public async confirmAndRunTests(): Promise<void> {
     const command = await this.dependencies.tests.detect();
     const choice = await vscode.window.showWarningMessage(
@@ -420,10 +550,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   private changeViews(changes: readonly FileChange[]): readonly object[] {
     return changes.map((change) => ({
       id: change.id,
+      groupId: change.groupId,
       path: change.path,
       operation: change.operation,
       reason: change.reason ?? "",
       status: change.status,
+      addedLines: change.addedLines,
+      deletedLines: change.deletedLines,
+      rolledBackAt: change.rolledBackAt ?? "",
       error: change.error ?? "",
     }));
   }

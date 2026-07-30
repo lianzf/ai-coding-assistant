@@ -40,6 +40,18 @@ describe("Webview protocol", () => {
     ).toBe(true);
   });
 
+  it("accepts explicit checkpoint and batch review actions", () => {
+    expect(inboundMessageSchema.safeParse({ type: "change/apply-all" }).success).toBe(true);
+    expect(inboundMessageSchema.safeParse({ type: "change/reject-all" }).success).toBe(true);
+    expect(inboundMessageSchema.safeParse({ type: "change/rollback-latest" }).success).toBe(true);
+    expect(
+      inboundMessageSchema.safeParse({
+        type: "change/rollback",
+        changeId: "fa6c3c8f-a76f-4b1a-9d97-2c85266f0b9c",
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects unknown fields on security-sensitive messages", () => {
     const result = inboundMessageSchema.safeParse({
       type: "provider/set-key",

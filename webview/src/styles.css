@@ -854,6 +854,14 @@ h3 {
   gap: 8px;
 }
 
+.change-toolbar {
+  display: flex;
+  margin: 9px 0 12px;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .change-card,
 .test-card,
 .settings {
@@ -892,8 +900,22 @@ h3 {
 }
 
 .status-pill.conflicted,
-.status-pill.failed {
+.status-pill.failed,
+.status-pill.rollback-conflicted {
   background: var(--vscode-testing-iconFailed, #a33);
+}
+
+.status-pill.rolled-back {
+  color: var(--vscode-foreground);
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.change-heading .line-added {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #3a7);
+}
+
+.change-heading .line-deleted {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #d66);
 }
 
 .actions {

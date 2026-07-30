@@ -15,10 +15,22 @@ export interface ProviderView {
 
 export interface ChangeView {
   readonly id: string;
+  readonly groupId: string;
   readonly path: string;
   readonly operation: "create" | "update";
   readonly reason: string;
-  readonly status: "pending" | "approved" | "applied" | "rejected" | "conflicted" | "failed";
+  readonly status:
+    | "pending"
+    | "approved"
+    | "applied"
+    | "rejected"
+    | "conflicted"
+    | "failed"
+    | "rollback-conflicted"
+    | "rolled-back";
+  readonly addedLines: number;
+  readonly deletedLines: number;
+  readonly rolledBackAt: string;
   readonly error: string;
 }
 

@@ -738,6 +738,8 @@ function ChangesView(): React.JSX.Element {
   );
   const pendingCount = visibleChanges.filter((change) => change.status === "pending").length;
   const appliedCount = visibleChanges.filter((change) => change.status === "applied").length;
+  const addedLines = visibleChanges.reduce((total, change) => total + change.addedLines, 0);
+  const deletedLines = visibleChanges.reduce((total, change) => total + change.deletedLines, 0);
 
   return (
     <section className="content-view">
@@ -755,10 +757,43 @@ function ChangesView(): React.JSX.Element {
         </button>
       </div>
 
-      <div className="metric-grid two">
+      <div className="metric-grid">
         <Metric label="待审核" value={String(pendingCount)} />
         <Metric label="已应用" value={String(appliedCount)} />
+        <Metric label="新增行" value={`+${addedLines}`} />
+        <Metric label="删除行" value={`-${deletedLines}`} />
       </div>
+
+      {(pendingCount > 0 || appliedCount > 0) && (
+        <div className="change-toolbar">
+          {pendingCount > 0 && (
+            <>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => vscode.postMessage({ type: "change/apply-all" })}
+              >
+                全部审核并应用
+              </button>
+              <button
+                type="button"
+                className="danger"
+                onClick={() => vscode.postMessage({ type: "change/reject-all" })}
+              >
+                全部拒绝
+              </button>
+            </>
+          )}
+          {appliedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => vscode.postMessage({ type: "change/rollback-latest" })}
+            >
+              回滚最近检查点
+            </button>
+          )}
+        </div>
+      )}
 
       {visibleChanges.length === 0 ? (
         <div className="empty-state compact">
@@ -798,13 +833,19 @@ function ChangeCard({ change }: { readonly change: ChangeView }): React.JSX.Elem
     rejected: "已拒绝",
     conflicted: "存在冲突",
     failed: "应用失败",
+    "rollback-conflicted": "回滚冲突",
+    "rolled-back": "已回滚",
   };
   return (
     <article className="change-card">
       <div className="change-heading">
         <div>
           <strong>{change.path}</strong>
-          <span>{change.operation === "create" ? "新建文件" : "更新文件"}</span>
+          <span>
+            {change.operation === "create" ? "新建文件" : "更新文件"} ·{" "}
+            <span className="line-added">+{change.addedLines}</span>{" "}
+            <span className="line-deleted">-{change.deletedLines}</span>
+          </span>
         </div>
         <span className={`status-pill ${change.status}`}>{statusNames[change.status]}</span>
       </div>
@@ -834,6 +875,14 @@ function ChangeCard({ change }: { readonly change: ChangeView }): React.JSX.Elem
               拒绝
             </button>
           </>
+        )}
+        {change.status === "applied" && (
+          <button
+            type="button"
+            onClick={() => vscode.postMessage({ type: "change/rollback", changeId: change.id })}
+          >
+            回滚此文件
+          </button>
         )}
       </div>
     </article>

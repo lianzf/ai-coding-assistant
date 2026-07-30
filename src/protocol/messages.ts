@@ -89,8 +89,14 @@ const searchSchema = z
 
 const changeActionSchema = z
   .object({
-    type: z.enum(["change/preview", "change/apply", "change/reject"]),
+    type: z.enum(["change/preview", "change/apply", "change/reject", "change/rollback"]),
     changeId: z.string().uuid(),
+  })
+  .strict();
+
+const changeBatchActionSchema = z
+  .object({
+    type: z.enum(["change/apply-all", "change/reject-all", "change/rollback-latest"]),
   })
   .strict();
 
@@ -125,6 +131,7 @@ export const inboundMessageSchema = z.discriminatedUnion("type", [
   sessionRenameSchema,
   searchSchema,
   changeActionSchema,
+  changeBatchActionSchema,
   runTestsSchema,
   projectAnalyzeSchema,
   openSettingsSchema,

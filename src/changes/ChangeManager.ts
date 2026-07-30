@@ -5,6 +5,7 @@ export interface ChangeWorkspaceGateway {
   read(path: string): Promise<string | undefined>;
   showDiff(change: FileChange): Promise<void>;
   apply(change: FileChange): Promise<void>;
+  rollback(change: FileChange): Promise<void>;
 }
 
 type ChangeListener = (changes: readonly FileChange[]) => void;
@@ -30,6 +31,26 @@ export class ChangeManager {
     );
   }
 
+  public latestAppliedGroup(): readonly FileChange[] {
+    const latest = this.list().find((change) => change.status === "applied");
+    if (!latest) {
+      return [];
+    }
+    return this.list().filter(
+      (change) => change.groupId === latest.groupId && change.status === "applied",
+    );
+  }
+
+  public latestPendingGroup(): readonly FileChange[] {
+    const latest = this.list().find((change) => change.status === "pending");
+    if (!latest) {
+      return [];
+    }
+    return this.list().filter(
+      (change) => change.groupId === latest.groupId && change.status === "pending",
+    );
+  }
+
   public get(id: string): FileChange {
     const change = this.changes.get(id);
     if (!change) {
@@ -40,6 +61,7 @@ export class ChangeManager {
 
   public async propose(specs: readonly ChangeSpec[]): Promise<readonly FileChange[]> {
     const proposed: FileChange[] = [];
+    const groupId = randomUUID();
     for (const spec of specs) {
       const originalContent = await this.workspace.read(spec.path);
       if (spec.operation === "create" && originalContent !== undefined) {
@@ -48,8 +70,10 @@ export class ChangeManager {
       if (spec.operation === "update" && originalContent === undefined) {
         throw new Error(`无法修改不存在的文件：${spec.path}`);
       }
+      const stats = this.lineStats(originalContent ?? "", spec.content);
       const change: FileChange = {
         id: randomUUID(),
+        groupId,
         path: spec.path,
         operation: spec.operation,
         ...(originalContent !== undefined
@@ -59,6 +83,8 @@ export class ChangeManager {
             }
           : {}),
         proposedContent: spec.content,
+        addedLines: stats.added,
+        deletedLines: stats.deleted,
         ...(spec.reason ? { reason: spec.reason } : {}),
         status: "pending",
         createdAt: new Date().toISOString(),
@@ -139,8 +165,78 @@ export class ChangeManager {
     }
   }
 
+  public async rollback(id: string): Promise<FileChange> {
+    const current = this.get(id);
+    if (current.status !== "applied") {
+      throw new Error("只有已经应用且尚未回滚的修改可以恢复。");
+    }
+    const actual = await this.workspace.read(current.path);
+    const conflicted =
+      actual === undefined ||
+      current.appliedHash === undefined ||
+      this.hash(actual) !== current.appliedHash;
+    if (conflicted) {
+      const next = {
+        ...current,
+        status: "rollback-conflicted" as const,
+        error: "文件在 AI 修改应用后又发生变化，已阻止自动回滚以保护用户内容。",
+      };
+      this.changes.set(id, next);
+      this.emit();
+      return next;
+    }
+
+    try {
+      await this.workspace.rollback(current);
+      const rolledBack = {
+        ...current,
+        status: "rolled-back" as const,
+        rolledBackAt: new Date().toISOString(),
+      };
+      this.changes.set(id, rolledBack);
+      this.emit();
+      return rolledBack;
+    } catch (error) {
+      const failed = {
+        ...current,
+        status: "failed" as const,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      this.changes.set(id, failed);
+      this.emit();
+      return failed;
+    }
+  }
+
   private hash(content: string): string {
     return createHash("sha256").update(content).digest("hex");
+  }
+
+  private lineStats(
+    originalContent: string,
+    proposedContent: string,
+  ): { readonly added: number; readonly deleted: number } {
+    const original = this.lineHistogram(originalContent);
+    const proposed = this.lineHistogram(proposedContent);
+    let added = 0;
+    let deleted = 0;
+    const lines = new Set([...original.keys(), ...proposed.keys()]);
+    for (const line of lines) {
+      const before = original.get(line) ?? 0;
+      const after = proposed.get(line) ?? 0;
+      added += Math.max(0, after - before);
+      deleted += Math.max(0, before - after);
+    }
+    return { added, deleted };
+  }
+
+  private lineHistogram(content: string): ReadonlyMap<string, number> {
+    const values = new Map<string, number>();
+    const lines = content.length === 0 ? [] : content.split(/\r?\n/);
+    for (const line of lines) {
+      values.set(line, (values.get(line) ?? 0) + 1);
+    }
+    return values;
   }
 
   private emit(): void {
