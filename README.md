@@ -1,6 +1,6 @@
 # AI Coding Assistant
 
-AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.5 版本提供多模型路由、统一权限与离线模式、目录/Git Diff/终端可视化上下文、持久化多轮会话、Agent 工具调用、任务检查点、安全回滚和受控测试执行。
+AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS Code AI 编程助手。0.6 版本提供可缓存项目画像、依赖与 Git 状态、风险和阅读建议、多模型路由、统一权限、可视化上下文、Agent 工具调用、任务检查点、安全回滚和受控测试执行。
 
 ## 主要能力
 
@@ -9,7 +9,8 @@ AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS
 - **统一权限**：独立控制工作区读取、模型网络、文件修改和命令执行，网络关闭时进入离线模式。
 - **可视化上下文**：显式添加目录结构、Git Diff 和终端输出，无需记忆特殊语法。
 - **多轮会话**：按工作区保存历史对话，支持新建、切换、重命名和删除。
-- **项目概览**：本地识别语言、技术栈、模块、入口、配置、脚本和测试文件。
+- **项目概览**：本地识别语言、技术栈、依赖、模块、入口、Git 状态、风险和阅读顺序。
+- **画像缓存**：按工作区持久化 15 分钟索引快照，文件变化自动失效，手动重新分析可强制刷新。
 - **项目工具调用**：规划/执行模式可安全列出、搜索和读取工作区内容，最多执行六轮。
 - **执行时间线**：展示工具名称、输入、执行状态、摘要和耗时。
 - **可视化上下文**：一键附加当前文件/选区或项目结构，也可搜索并引用具体文件。
@@ -33,7 +34,7 @@ AI Coding Assistant 是一款本地优先、面向真实软件工程项目的 VS
 要求 VS Code 1.96 或更高版本。
 
 ```powershell
-code --install-extension .\artifacts\ai-coding-assistant-0.5.0.vsix --force
+code --install-extension .\artifacts\ai-coding-assistant-0.6.0.vsix --force
 ```
 
 离线和银河麒麟说明见 [OFFLINE-INSTALL.zh-CN.md](OFFLINE-INSTALL.zh-CN.md)，完整操作说明见 [USER-GUIDE.zh-CN.md](USER-GUIDE.zh-CN.md)。

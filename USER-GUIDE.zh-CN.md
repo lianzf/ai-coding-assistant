@@ -2,7 +2,7 @@
 
 ## 1. 文档说明
 
-本文档适用于 AI Coding Assistant `0.5.x`。
+本文档适用于 AI Coding Assistant `0.6.x`。
 
 插件标识：
 
@@ -49,9 +49,9 @@ AI Coding Assistant 是一款本地优先的 VS Code AI 编程插件，主要功
 标准离线交付目录包含：
 
 ```text
-ai-coding-assistant-0.5.0.vsix
-ai-coding-assistant-0.5.0.vsix.sha256
-ai-coding-assistant-0.5.0.metadata.json
+ai-coding-assistant-0.6.0.vsix
+ai-coding-assistant-0.6.0.vsix.sha256
+ai-coding-assistant-0.6.0.metadata.json
 ```
 
 安装前应先验证 VSIX 的 SHA-256。
@@ -59,15 +59,15 @@ ai-coding-assistant-0.5.0.metadata.json
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ai-coding-assistant-0.5.0.vsix -Algorithm SHA256
-Get-Content .\ai-coding-assistant-0.5.0.vsix.sha256
+Get-FileHash .\ai-coding-assistant-0.6.0.vsix -Algorithm SHA256
+Get-Content .\ai-coding-assistant-0.6.0.vsix.sha256
 ```
 
 银河麒麟/Linux：
 
 ```bash
-sha256sum ai-coding-assistant-0.5.0.vsix
-cat ai-coding-assistant-0.5.0.vsix.sha256
+sha256sum ai-coding-assistant-0.6.0.vsix
+cat ai-coding-assistant-0.6.0.vsix.sha256
 ```
 
 两个校验值必须一致。
@@ -80,13 +80,13 @@ cat ai-coding-assistant-0.5.0.vsix.sha256
 2. 按 `Ctrl+Shift+X` 打开“扩展”视图。
 3. 点击扩展视图右上角的 `...`。
 4. 选择“从 VSIX 安装...”。
-5. 选择 `ai-coding-assistant-0.5.0.vsix`。
+5. 选择 `ai-coding-assistant-0.6.0.vsix`。
 6. 安装完成后执行 **Developer: Reload Window**。
 
 ### 4.2 Windows 命令行安装
 
 ```powershell
-code --install-extension .\ai-coding-assistant-0.5.0.vsix --force
+code --install-extension .\ai-coding-assistant-0.6.0.vsix --force
 ```
 
 检查安装结果：
@@ -99,13 +99,13 @@ code --list-extensions --show-versions |
 正常结果示例：
 
 ```text
-local-project.ai-coding-assistant@0.5.0
+local-project.ai-coding-assistant@0.6.0
 ```
 
 ### 4.3 银河麒麟/Linux 命令行安装
 
 ```bash
-code --install-extension ./ai-coding-assistant-0.5.0.vsix --force
+code --install-extension ./ai-coding-assistant-0.6.0.vsix --force
 code --list-extensions --show-versions |
   grep local-project.ai-coding-assistant
 ```
@@ -122,7 +122,7 @@ code --install-extension ./ai-coding-assistant-new.vsix --force
 
 升级后必须重新加载 VS Code 窗口。
 
-从 `0.3.x` 或 `0.4.x` 升级到 `0.5.x` 时，原有 `default` 模型配置和 API Key 会继续使用，无需重新录入。升级后可以再添加其他模型并配置模式路由。
+从 `0.3.x`、`0.4.x` 或 `0.5.x` 升级到 `0.6.x` 时，原有模型配置、API Key、会话和权限设置会继续使用，无需重新录入。
 
 ### 4.5 卸载
 
@@ -364,11 +364,15 @@ Model ID：deepseek-v4-pro
 
 - 文件和测试文件数量；
 - 主要语言、技术栈和包管理器；
+- 运行依赖、开发依赖和最多 40 个依赖名称；
 - 顶层模块、常见入口和配置文件；
 - `package.json` 中可用的项目脚本；
-- 索引是否达到文件数量上限。
+- 当前 Git 分支，以及变更、暂存、未跟踪和冲突文件数量；
+- 大项目、缺少测试、依赖过多、敏感路径和 Git 冲突等结构风险；
+- 建议的项目阅读顺序；
+- 索引是完整还是部分、来自缓存还是重新扫描。
 
-项目概览不会自动发送给远程模型，敏感路径仍会被安全策略过滤。
+项目画像按工作区保存 15 分钟缓存，重新加载 VS Code 后可以直接恢复。工作区文件创建、修改或删除时缓存会自动失效；点击“重新分析”始终强制刷新。项目概览不会自动发送给远程模型，敏感路径仍会被安全策略过滤。
 
 ## 9. 生成与审核代码修改
 
@@ -645,6 +649,9 @@ AI Coding Assistant：运行单元测试
 - [ ] 流式对话可以正常返回；
 - [ ] 当前文件/选区可以作为上下文；
 - [ ] 工作区搜索可以返回结果；
+- [ ] 项目概览包含依赖、Git 状态、风险和阅读建议；
+- [ ] 重新打开项目时可以恢复有效画像缓存；
+- [ ] 修改工作区文件后项目画像缓存会失效；
 - [ ] AI 修改可以打开原生 Diff；
 - [ ] 拒绝修改时不会写入文件；
 - [ ] 批准修改后可以应用；
